@@ -9,3 +9,12 @@ export {
   useReadyUp,
   useForfeit,
 } from './use-match';
+export {
+  useCreditBalance,
+  useCreditHolds,
+  useCreditHistory,
+  usePurchaseCredits,
+  useStakeCredits,
+  useReleaseCredits,
+  walletKeys,
+} from './use-wallet';

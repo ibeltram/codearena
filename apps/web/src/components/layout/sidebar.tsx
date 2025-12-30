@@ -22,6 +22,7 @@ import { useAuthStore, useUIStore } from '@/store';
 const mainNavItems = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/challenges', label: 'Challenges', icon: Swords },
+  { href: '/matches', label: 'Matches', icon: Swords },
   { href: '/ranked', label: 'Ranked', icon: BarChart3 },
   { href: '/tournaments', label: 'Tournaments', icon: Trophy },
   { href: '/leaderboard', label: 'Leaderboard', icon: BarChart3 },
