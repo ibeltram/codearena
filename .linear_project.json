@@ -1,0 +1,14 @@
+{
+  "initialized": true,
+  "created_at": "2025-12-30T21:22:55.641Z",
+  "team_id": "2c30e723-0b97-4c6a-81ce-56cbad87ef6b",
+  "team_name": "Quiverflow",
+  "project_id": "d4abd130-5a41-4876-bdd2-4bb02c0a5f13",
+  "project_name": "CodeArena",
+  "project_url": "https://linear.app/quiverflow/project/codearena-6e53d3100b68",
+  "meta_issue_id": "55fbd3f3-972b-452c-83af-2292a058aa13",
+  "meta_issue_identifier": "QUI-55",
+  "total_issues": 50,
+  "issue_range": "QUI-5 to QUI-54",
+  "notes": "Project initialized by initializer agent. 50 issues created covering infrastructure, authentication, challenges, matches, submissions, judging, credits, web UI, VS Code extension, admin, tournaments, and styling."
+}
