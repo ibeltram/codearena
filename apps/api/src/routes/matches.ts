@@ -10,6 +10,18 @@ import {
   ForbiddenError,
   ConflictError,
 } from '../lib/errors';
+import {
+  transitionMatch,
+  forfeitMatch as stateMachineForfeit,
+  cancelMatch,
+  handleParticipantReady,
+  scheduleTimerTransition,
+  getMatchState,
+  isValidTransition,
+  canForfeit,
+  canCancel,
+  type MatchStatus,
+} from '../lib/match-state-machine';
 
 const {
   matches,
@@ -123,6 +135,18 @@ function canJoinMatch(status: string): boolean {
 function canReadyUp(status: string): boolean {
   return status === 'matched';
 }
+
+// Valid state transitions for reference
+const MATCH_STATE_TRANSITIONS: Record<string, string[]> = {
+  created: ['open', 'archived'],
+  open: ['matched', 'archived'],
+  matched: ['in_progress', 'open', 'finalized', 'archived'],
+  in_progress: ['submission_locked', 'finalized'],
+  submission_locked: ['judging', 'finalized'],
+  judging: ['finalized'],
+  finalized: ['archived'],
+  archived: [],
+};
 
 export async function matchRoutes(app: FastifyInstance) {
   // TODO: Add auth middleware - for now we'll use a mock user ID from header
@@ -367,11 +391,16 @@ export async function matchRoutes(app: FastifyInstance) {
       hold = await createStakeHold(creditAccount.id, newMatch.id, stakeAmount);
     }
 
-    // Update match status to 'open' (waiting for opponent)
-    await db
-      .update(matches)
-      .set({ status: 'open' })
-      .where(eq(matches.id, newMatch.id));
+    // Use state machine to transition to 'open' (waiting for opponent)
+    const transitionResult = await transitionMatch(newMatch.id, 'open', {
+      matchId: newMatch.id,
+      userId,
+      reason: 'match_created',
+    });
+
+    if (!transitionResult.success) {
+      throw new ConflictError(transitionResult.error || 'Failed to open match');
+    }
 
     return reply.status(201).send({
       id: newMatch.id,
@@ -479,11 +508,16 @@ export async function matchRoutes(app: FastifyInstance) {
         hold = await createStakeHold(creditAccount.id, openMatch.id, stakeAmount);
       }
 
-      // Update match status to 'matched'
-      await db
-        .update(matches)
-        .set({ status: 'matched' })
-        .where(eq(matches.id, openMatch.id));
+      // Use state machine to transition to 'matched'
+      const transitionResult = await transitionMatch(openMatch.id, 'matched', {
+        matchId: openMatch.id,
+        userId,
+        reason: 'opponent_joined_queue',
+      });
+
+      if (!transitionResult.success) {
+        throw new ConflictError(transitionResult.error || 'Failed to match');
+      }
 
       return reply.status(200).send({
         matched: true,
@@ -641,11 +675,16 @@ export async function matchRoutes(app: FastifyInstance) {
       })
       .returning();
 
-    // Update match status to 'matched'
-    await db
-      .update(matches)
-      .set({ status: 'matched' })
-      .where(eq(matches.id, matchId));
+    // Use state machine to transition to 'matched'
+    const transitionResult = await transitionMatch(matchId, 'matched', {
+      matchId,
+      userId,
+      reason: 'opponent_joined_invite',
+    });
+
+    if (!transitionResult.success) {
+      throw new ConflictError(transitionResult.error || 'Failed to update match status');
+    }
 
     return reply.status(200).send({
       matchId,
@@ -712,7 +751,7 @@ export async function matchRoutes(app: FastifyInstance) {
       .set({ readyAt: now })
       .where(eq(matchParticipants.id, participant.id));
 
-    // Check if all participants are ready
+    // Check if all participants are ready using state machine
     const allParticipants = await db
       .select()
       .from(matchParticipants)
@@ -721,30 +760,34 @@ export async function matchRoutes(app: FastifyInstance) {
     const allReady = allParticipants.length === 2 && allParticipants.every(p => p.readyAt || p.id === participant.id);
 
     if (allReady) {
-      // Start the match!
-      const startTime = new Date();
-      // Default duration is 60 minutes - in production would be from match config
-      const durationMs = DEFAULT_MATCH_DURATION_MINUTES * 60 * 1000;
-      const endTime = new Date(startTime.getTime() + durationMs);
-      // Lock time is same as end time for now
-      const lockTime = endTime;
+      // Use state machine to start the match
+      const transitionResult = await transitionMatch(matchId, 'in_progress', {
+        matchId,
+        userId,
+        reason: 'all_players_ready',
+      });
 
-      await db
-        .update(matches)
-        .set({
-          status: 'in_progress',
-          startAt: startTime,
-          endAt: endTime,
-          lockAt: lockTime,
-        })
+      if (!transitionResult.success) {
+        throw new ConflictError(transitionResult.error || 'Failed to start match');
+      }
+
+      // Get updated match for timestamps
+      const [updatedMatch] = await db
+        .select()
+        .from(matches)
         .where(eq(matches.id, matchId));
+
+      // Schedule timer-based transition to submission_locked at endAt
+      if (updatedMatch?.endAt) {
+        await scheduleTimerTransition(matchId, new Date(updatedMatch.endAt), 'submission_locked');
+      }
 
       return reply.status(200).send({
         matchId,
         status: 'in_progress',
         message: 'Match started! Good luck!',
-        startedAt: startTime.toISOString(),
-        endsAt: endTime.toISOString(),
+        startedAt: updatedMatch?.startAt?.toISOString(),
+        endsAt: updatedMatch?.endAt?.toISOString(),
         allReady: true,
       });
     }
@@ -782,51 +825,29 @@ export async function matchRoutes(app: FastifyInstance) {
       throw new NotFoundError('Match', matchId);
     }
 
-    // Can only forfeit if match is in progress
-    if (match.status !== 'in_progress' && match.status !== 'matched') {
+    // Use state machine's canForfeit check
+    if (!canForfeit(match.status as MatchStatus)) {
       throw new ConflictError(`Cannot forfeit match with status '${match.status}'`);
     }
 
-    // Check if user is a participant
-    const [participant] = await db
-      .select()
-      .from(matchParticipants)
-      .where(
-        and(
-          eq(matchParticipants.matchId, matchId),
-          eq(matchParticipants.userId, userId)
-        )
-      );
+    // Use state machine to handle forfeit (handles participant validation internally)
+    const forfeitResult = await stateMachineForfeit(matchId, userId);
 
-    if (!participant) {
-      throw new ForbiddenError('Not a participant in this match');
+    if (!forfeitResult.success) {
+      if (forfeitResult.error?.includes('not a participant')) {
+        throw new ForbiddenError('Not a participant in this match');
+      }
+      if (forfeitResult.error?.includes('already forfeited')) {
+        throw new ConflictError('Already forfeited');
+      }
+      throw new ConflictError(forfeitResult.error || 'Failed to forfeit');
     }
-
-    // Check if already forfeited
-    if (participant.forfeitAt) {
-      throw new ConflictError('Already forfeited');
-    }
-
-    // Mark participant as forfeited
-    const now = new Date();
-    await db
-      .update(matchParticipants)
-      .set({ forfeitAt: now })
-      .where(eq(matchParticipants.id, participant.id));
-
-    // Update match status to finalized (opponent wins by default)
-    await db
-      .update(matches)
-      .set({ status: 'finalized' })
-      .where(eq(matches.id, matchId));
-
-    // TODO: Settle credits - winner gets loser's stake
 
     return reply.status(200).send({
       matchId,
-      status: 'finalized',
+      status: forfeitResult.newStatus,
       message: 'Match forfeited. Opponent wins by default.',
-      forfeitedAt: now.toISOString(),
+      forfeitedAt: new Date().toISOString(),
     });
   });
 
@@ -896,6 +917,184 @@ export async function matchRoutes(app: FastifyInstance) {
         total,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  });
+
+  // GET /api/matches/:id/state - Get real-time match state (for WebSocket/polling)
+  app.get('/api/matches/:id/state', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramResult = matchIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid match ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: matchId } = paramResult.data;
+
+    const matchState = await getMatchState(matchId);
+
+    if (!matchState) {
+      throw new NotFoundError('Match', matchId);
+    }
+
+    return matchState;
+  });
+
+  // POST /api/matches/:id/cancel - Cancel a match (creator only, before it starts)
+  app.post('/api/matches/:id/cancel', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const paramResult = matchIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid match ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: matchId } = paramResult.data;
+
+    // Get the match
+    const [match] = await db
+      .select()
+      .from(matches)
+      .where(eq(matches.id, matchId));
+
+    if (!match) {
+      throw new NotFoundError('Match', matchId);
+    }
+
+    // Use state machine's canCancel check
+    if (!canCancel(match.status as MatchStatus)) {
+      throw new ConflictError(`Cannot cancel match with status '${match.status}'`);
+    }
+
+    // Use state machine to handle cancel
+    const cancelResult = await cancelMatch(matchId, userId);
+
+    if (!cancelResult.success) {
+      if (cancelResult.error?.includes('Only the match creator')) {
+        throw new ForbiddenError(cancelResult.error);
+      }
+      throw new ConflictError(cancelResult.error || 'Failed to cancel match');
+    }
+
+    return reply.status(200).send({
+      matchId,
+      status: cancelResult.newStatus,
+      message: 'Match cancelled. Stakes have been released.',
+    });
+  });
+
+  // POST /api/matches/:id/transition - Admin/system endpoint for explicit state transitions
+  app.post('/api/matches/:id/transition', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const paramResult = matchIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid match ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: matchId } = paramResult.data;
+
+    // Parse body for target status
+    const transitionSchema = z.object({
+      toStatus: z.enum([
+        'created',
+        'open',
+        'matched',
+        'in_progress',
+        'submission_locked',
+        'judging',
+        'finalized',
+        'archived',
+      ]),
+      reason: z.string().optional(),
+    });
+
+    const bodyResult = transitionSchema.safeParse(request.body);
+
+    if (!bodyResult.success) {
+      throw new ValidationError('Invalid request body', {
+        issues: bodyResult.error.issues,
+      });
+    }
+
+    const { toStatus, reason } = bodyResult.data;
+
+    // Get current match
+    const [match] = await db
+      .select()
+      .from(matches)
+      .where(eq(matches.id, matchId));
+
+    if (!match) {
+      throw new NotFoundError('Match', matchId);
+    }
+
+    // Check if transition is valid
+    if (!isValidTransition(match.status as MatchStatus, toStatus)) {
+      throw new ConflictError(
+        `Invalid transition from '${match.status}' to '${toStatus}'. Valid next states: ${
+          MATCH_STATE_TRANSITIONS[match.status]?.join(', ') || 'none'
+        }`
+      );
+    }
+
+    // Perform transition
+    const transitionResult = await transitionMatch(matchId, toStatus, {
+      matchId,
+      userId,
+      reason: reason || 'manual_transition',
+    });
+
+    if (!transitionResult.success) {
+      throw new ConflictError(transitionResult.error || 'Transition failed');
+    }
+
+    return reply.status(200).send({
+      matchId,
+      previousStatus: transitionResult.previousStatus,
+      newStatus: transitionResult.newStatus,
+      event: transitionResult.event,
+    });
+  });
+
+  // GET /api/matches/:id/transitions - Get valid next transitions for a match
+  app.get('/api/matches/:id/transitions', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramResult = matchIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid match ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: matchId } = paramResult.data;
+
+    // Get current match
+    const [match] = await db
+      .select()
+      .from(matches)
+      .where(eq(matches.id, matchId));
+
+    if (!match) {
+      throw new NotFoundError('Match', matchId);
+    }
+
+    const currentStatus = match.status as MatchStatus;
+    const validTransitions = MATCH_STATE_TRANSITIONS[currentStatus] || [];
+
+    return {
+      matchId,
+      currentStatus,
+      validTransitions,
+      canForfeit: canForfeit(currentStatus),
+      canCancel: canCancel(currentStatus),
     };
   });
 }
