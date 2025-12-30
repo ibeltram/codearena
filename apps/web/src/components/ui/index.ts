@@ -10,5 +10,7 @@ export {
   CardContent,
 } from './card';
 export { Input } from './input';
+export { Pagination } from './pagination';
+export { Select } from './select';
 export { Separator } from './separator';
 export { Skeleton } from './skeleton';
