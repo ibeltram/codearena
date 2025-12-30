@@ -1,0 +1,92 @@
+{
+  "name": "codearena",
+  "displayName": "CodeArena",
+  "description": "Competitive coding platform - join matches and submit directly from VS Code",
+  "version": "0.1.0",
+  "publisher": "codearena",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codearena.signIn",
+        "title": "CodeArena: Sign In"
+      },
+      {
+        "command": "codearena.signOut",
+        "title": "CodeArena: Sign Out"
+      },
+      {
+        "command": "codearena.browseChallenges",
+        "title": "CodeArena: Browse Challenges"
+      },
+      {
+        "command": "codearena.joinMatch",
+        "title": "CodeArena: Join Match"
+      },
+      {
+        "command": "codearena.submit",
+        "title": "CodeArena: Submit"
+      },
+      {
+        "command": "codearena.lockSubmission",
+        "title": "CodeArena: Lock Submission"
+      },
+      {
+        "command": "codearena.openMatchInWeb",
+        "title": "CodeArena: Open Match in Web"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codearena",
+          "title": "CodeArena",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codearena": [
+        {
+          "id": "codearena-challenges",
+          "name": "Challenges"
+        },
+        {
+          "id": "codearena-match",
+          "name": "Active Match"
+        },
+        {
+          "id": "codearena-history",
+          "name": "Recent Matches"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "dev": "pnpm run build --watch",
+    "lint": "eslint src --ext ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@codearena/eslint-config": "workspace:*",
+    "@codearena/tsconfig": "workspace:*",
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.3.8",
+    "esbuild": "^0.19.9",
+    "eslint": "^8.55.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@codearena/shared": "workspace:*"
+  }
+}
