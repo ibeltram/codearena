@@ -7,6 +7,7 @@ import Fastify from 'fastify';
 import { closeDatabaseConnection } from './db';
 import { env } from './lib/env';
 import { logger } from './lib/logger';
+import { cleanupAllConnections } from './lib/match-events';
 import {
   registerCors,
   registerErrorHandler,
@@ -50,6 +51,8 @@ async function start() {
       logger.info(`Received ${signal}, shutting down gracefully...`);
 
       try {
+        // Cleanup WebSocket/SSE connections
+        cleanupAllConnections();
         await app.close();
         await closeDatabaseConnection();
         logger.info('Server closed successfully');
