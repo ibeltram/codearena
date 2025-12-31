@@ -15,6 +15,10 @@ export const users = pgTable('users', {
   isBanned: boolean('is_banned').notNull().default(false),
   isVerified: boolean('is_verified').notNull().default(false),
   preferences: jsonb('preferences').notNull().default({}),
+  // GDPR soft delete fields
+  deletionRequestedAt: timestamp('deletion_requested_at', { withTimezone: true }),
+  deletionScheduledAt: timestamp('deletion_scheduled_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
 // OAuth providers enum

@@ -4,6 +4,7 @@ import { healthRoutes } from './health';
 import { authRoutes } from './auth';
 import { authGitHubRoutes } from './auth-github';
 import { authGoogleRoutes } from './auth-google';
+import { accountRoutes } from './account';
 import { challengeRoutes } from './challenges';
 import { matchRoutes } from './matches';
 import { matchEventRoutes } from './match-events';
@@ -34,6 +35,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Google OAuth routes
   await app.register(authGoogleRoutes);
+
+  // Account management routes (GDPR export, deletion)
+  await app.register(accountRoutes);
 
   // Public API routes
   await app.register(challengeRoutes);

@@ -105,3 +105,15 @@ export {
   useFulfillPrizeClaim,
   prizeClaimKeys,
 } from './use-prize-claims';
+export {
+  useDeletionStatus,
+  useExportData,
+  useRequestDeletion,
+  useCancelDeletion,
+  useUpdateProfile as useUpdateAccountProfile,
+  accountKeys,
+  type DeletionStatus,
+  type DeletionResponse,
+  type UpdateProfileRequest,
+  type UserProfile,
+} from './use-account';
