@@ -5,7 +5,7 @@
  * Provides pub/sub functionality for match state changes.
  */
 
-import { WebSocket } from 'ws';
+import type { WebSocket } from '@fastify/websocket';
 import { FastifyReply } from 'fastify';
 import { MatchEvent, MatchEventType, onMatchEvent, getMatchState } from './match-state-machine';
 import { logger } from './logger';

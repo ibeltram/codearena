@@ -4,6 +4,8 @@ import { healthRoutes } from './health';
 import { challengeRoutes } from './challenges';
 import { matchRoutes } from './matches';
 import { matchEventRoutes } from './match-events';
+import { creditRoutes } from './credits';
+import { submissionRoutes } from './submissions';
 import { adminRoutes } from './admin';
 import { initializeMatchEvents } from '../lib/match-events';
 
@@ -23,11 +25,16 @@ export async function registerRoutes(app: FastifyInstance) {
   // Match event routes (WebSocket/SSE)
   await app.register(matchEventRoutes);
 
+  // Credit API routes
+  await app.register(creditRoutes);
+
+  // Submission upload routes
+  await app.register(submissionRoutes);
+
   // Admin API routes (TODO: add auth middleware)
   await app.register(adminRoutes);
 
   // TODO: Add more routes as they are implemented
   // await app.register(authRoutes, { prefix: '/api/auth' });
-  // await app.register(creditsRoutes, { prefix: '/api/credits' });
   // etc.
 }
