@@ -595,13 +595,13 @@ export async function uploadContentAddressed(
   const { prefix, ...uploadOptions } = options;
 
   // Check if content already exists (deduplication)
-  const exists = await storage.exists(bucket, key);
+  const exists = await storageClient.exists(bucket, key);
   if (exists) {
-    const info = await storage.head(bucket, key);
+    const info = await storageClient.head(bucket, key);
     return { hash, key, etag: info?.etag || '' };
   }
 
-  const { etag } = await storage.upload(bucket, key, content, uploadOptions);
+  const { etag } = await storageClient.upload(bucket, key, content, uploadOptions);
 
   return { hash, key, etag };
 }
@@ -615,7 +615,7 @@ export async function downloadByHash(
   prefix: string = ''
 ): Promise<DownloadResult> {
   const key = generateContentKey(hash, prefix);
-  return storage.download(bucket, key);
+  return storageClient.download(bucket, key);
 }
 
 // Artifact-specific helpers
@@ -632,7 +632,7 @@ export async function uploadArtifact(
   const hash = hashContent(content);
   const key = `matches/${matchId}/submissions/${submissionId}/${filename}`;
 
-  await storage.upload(BUCKETS.ARTIFACTS, key, content, {
+  await storageClient.upload(BUCKETS.ARTIFACTS, key, content, {
     contentType: 'application/zip',
     metadata: {
       'match-id': matchId,
@@ -652,7 +652,7 @@ export function getArtifactDownloadUrl(
   filename?: string,
   expiresIn: number = 3600
 ): string {
-  return storage.generateDownloadUrl(BUCKETS.ARTIFACTS, key, {
+  return storageClient.generateDownloadUrl(BUCKETS.ARTIFACTS, key, {
     expiresIn,
     contentDisposition: filename ? `attachment; filename="${filename}"` : undefined,
   });
@@ -668,7 +668,7 @@ export async function uploadJudgingLog(
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const key = `matches/${matchId}/logs/${timestamp}.log`;
 
-  await storage.upload(BUCKETS.LOGS, key, content, {
+  await storageClient.upload(BUCKETS.LOGS, key, content, {
     contentType: 'text/plain',
   });
 
@@ -684,14 +684,37 @@ export function getUploadUrl(
   contentType?: string,
   expiresIn: number = 3600
 ): { url: string } {
-  return storage.generateUploadUrl(bucket, key, {
+  return storageClient.generateUploadUrl(bucket, key, {
     expiresIn,
     contentType,
   });
 }
 
+/**
+ * Download an object from storage
+ */
+export async function downloadObject(
+  bucket: BucketName,
+  key: string
+): Promise<Buffer> {
+  const result = await storageClient.download(bucket, key);
+  return result.body;
+}
+
+/**
+ * Upload an object to storage
+ */
+export async function uploadObject(
+  bucket: BucketName,
+  key: string,
+  data: Buffer | string,
+  options?: UploadOptions
+): Promise<{ etag: string; key: string }> {
+  return storageClient.upload(bucket, key, data, options);
+}
+
 // Export singleton instance
-export const storage = new StorageClient();
+export const storage = storageClient;
 
 // Export types
 export type { StorageClient };
