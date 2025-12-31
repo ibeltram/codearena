@@ -68,3 +68,11 @@ export {
   useRejudgeDispute,
   adminDisputeKeys,
 } from './use-admin-disputes';
+export {
+  useRewardPartners,
+  useRewardPartner,
+  useRewardRedemptions,
+  useRewardRedemption,
+  useRedeemReward,
+  rewardsKeys,
+} from './use-rewards';

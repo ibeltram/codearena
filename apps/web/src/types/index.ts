@@ -5,3 +5,4 @@ export * from './match';
 export * from './tournament';
 export * from './user';
 export * from './wallet';
+export * from './rewards';
