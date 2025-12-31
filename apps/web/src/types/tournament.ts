@@ -1,0 +1,250 @@
+/**
+ * Tournament Types
+ *
+ * Type definitions for tournaments, registrations, brackets, and related data.
+ */
+
+export type TournamentStatus =
+  | 'draft'
+  | 'registration_open'
+  | 'registration_closed'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export type TournamentFormat =
+  | 'single_elimination'
+  | 'double_elimination'
+  | 'swiss'
+  | 'ladder'
+  | 'round_robin';
+
+export type BracketMatchStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'completed'
+  | 'bye';
+
+export type BracketSide = 'winners' | 'losers' | 'grand_finals';
+
+export interface PrizePool {
+  total?: number;
+  currency?: string;
+  distribution?: {
+    place: number;
+    amount: number;
+    percentage?: number;
+  }[];
+  sponsors?: {
+    name: string;
+    logoUrl?: string;
+    contribution?: number;
+  }[];
+}
+
+export interface TournamentRules {
+  maxMatchDuration?: number;
+  checkInRequired?: boolean;
+  checkInWindowMinutes?: number;
+  allowLateRegistration?: boolean;
+  [key: string]: unknown;
+}
+
+export interface TournamentChallenge {
+  id: string;
+  title: string;
+  category: string;
+  difficulty: string;
+}
+
+export interface Tournament {
+  id: string;
+  name: string;
+  description: string | null;
+  format: TournamentFormat;
+  status: TournamentStatus;
+  maxParticipants: number;
+  minParticipants: number;
+  registrationStartAt: string | null;
+  registrationEndAt: string | null;
+  startAt: string;
+  endAt: string | null;
+  entryFeeCredits: number;
+  prizePoolJson: PrizePool;
+  rulesJson: TournamentRules;
+  createdAt: string;
+  participantCount: number;
+  challenge?: TournamentChallenge | null;
+}
+
+export interface TournamentListItem {
+  id: string;
+  name: string;
+  description: string | null;
+  format: TournamentFormat;
+  status: TournamentStatus;
+  maxParticipants: number;
+  minParticipants: number;
+  registrationStartAt: string | null;
+  registrationEndAt: string | null;
+  startAt: string;
+  endAt: string | null;
+  entryFeeCredits: number;
+  prizePoolJson: PrizePool;
+  createdAt: string;
+  participantCount: number;
+}
+
+export interface TournamentsResponse {
+  data: TournamentListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface TournamentFilters {
+  page?: number;
+  limit?: number;
+  status?: TournamentStatus;
+  format?: TournamentFormat;
+  upcoming?: boolean;
+}
+
+export interface TournamentParticipant {
+  id: string;
+  seed: number | null;
+  isCheckedIn: boolean;
+  eliminatedAt: string | null;
+  finalPlacement: number | null;
+  registeredAt: string;
+  user: {
+    id: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
+}
+
+export interface TournamentParticipantsResponse {
+  tournamentId: string;
+  participants: TournamentParticipant[];
+  total: number;
+}
+
+export interface BracketMatch {
+  id: string;
+  tournamentId: string;
+  round: number;
+  position: number;
+  bracketSide: BracketSide | null;
+  participant1Id: string | null;
+  participant2Id: string | null;
+  winnerId: string | null;
+  matchId: string | null;
+  status: BracketMatchStatus;
+  scheduledAt: string | null;
+  completedAt: string | null;
+  nextMatchId: string | null;
+  loserNextMatchId: string | null;
+}
+
+export interface BracketParticipantInfo {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface TournamentBracketResponse {
+  tournamentId: string;
+  format: TournamentFormat;
+  status: TournamentStatus;
+  rounds: Record<number, BracketMatch[]>;
+  matches: BracketMatch[];
+  participants: Record<string, BracketParticipantInfo>;
+  totalRounds: number;
+}
+
+export interface TournamentRegistrationResponse {
+  id: string;
+  tournamentId: string;
+  userId: string;
+  registeredAt: string;
+  entryFeeHoldId: string | null;
+  message: string;
+}
+
+// Display helpers
+export const statusLabels: Record<TournamentStatus, string> = {
+  draft: 'Draft',
+  registration_open: 'Registration Open',
+  registration_closed: 'Registration Closed',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+
+export const statusColors: Record<TournamentStatus, string> = {
+  draft: 'bg-gray-500',
+  registration_open: 'bg-green-500',
+  registration_closed: 'bg-yellow-500',
+  in_progress: 'bg-blue-500',
+  completed: 'bg-purple-500',
+  cancelled: 'bg-red-500',
+};
+
+export const formatLabels: Record<TournamentFormat, string> = {
+  single_elimination: 'Single Elimination',
+  double_elimination: 'Double Elimination',
+  swiss: 'Swiss',
+  ladder: 'Ladder',
+  round_robin: 'Round Robin',
+};
+
+export const formatDescriptions: Record<TournamentFormat, string> = {
+  single_elimination: 'Lose once and you\'re out',
+  double_elimination: 'Lose twice to be eliminated',
+  swiss: 'Multiple rounds with similar-record opponents',
+  ladder: 'Climb the ranks by challenging others',
+  round_robin: 'Everyone plays everyone',
+};
+
+// Helper to check if registration is available
+export function canRegister(tournament: Tournament | TournamentListItem): boolean {
+  if (tournament.status !== 'registration_open') return false;
+  if (tournament.participantCount >= tournament.maxParticipants) return false;
+  if (tournament.registrationEndAt && new Date(tournament.registrationEndAt) < new Date()) return false;
+  return true;
+}
+
+// Helper to format prize pool display
+export function formatPrizePool(prizePool: PrizePool): string {
+  if (!prizePool.total) return 'TBD';
+  const currency = prizePool.currency || 'credits';
+  if (currency === 'credits') {
+    return `${prizePool.total.toLocaleString()} credits`;
+  }
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency,
+    minimumFractionDigits: 0,
+  }).format(prizePool.total);
+}
+
+// Helper to get time until tournament starts
+export function getTimeUntilStart(startAt: string): string {
+  const start = new Date(startAt);
+  const now = new Date();
+  const diff = start.getTime() - now.getTime();
+
+  if (diff <= 0) return 'Started';
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}

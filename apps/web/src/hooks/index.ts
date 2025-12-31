@@ -29,6 +29,16 @@ export {
   useTogglePublicArtifacts,
 } from './use-profile';
 export {
+  useTournaments,
+  useTournament,
+  useTournamentParticipants,
+  useTournamentBracket,
+  useRegisterForTournament,
+  useWithdrawFromTournament,
+  useCheckInToTournament,
+  tournamentKeys,
+} from './use-tournament';
+export {
   useCreditBalance,
   useCreditHolds,
   useCreditHistory,
