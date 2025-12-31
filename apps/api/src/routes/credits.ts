@@ -1,13 +1,17 @@
 /**
  * Credits Routes
  *
- * Provides API endpoints for credit balance, transaction history, and active holds.
+ * Provides API endpoints for credit balance, transaction history, active holds,
+ * and staking operations.
  *
  * Endpoints:
  * - GET /api/credits/balance - Get user's credit balance (available, reserved, total)
  * - GET /api/credits/history - Get paginated transaction history with filtering
  * - GET /api/credits/holds - Get active credit holds
  * - GET /api/credits/holds/:id - Get specific hold details
+ * - POST /api/credits/stake - Create stake hold for match
+ * - POST /api/credits/release - Release stake hold (forfeit/cancel)
+ * - POST /api/credits/settle/:matchId - Settle match stakes
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -16,6 +20,14 @@ import { eq, and, desc, count, gte, lte, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db';
 import { NotFoundError, ValidationError, ForbiddenError } from '../lib/errors';
+import {
+  createStakeHold,
+  releaseStakeHold,
+  settleMatch,
+  getMatchStakeAmount,
+  canStake,
+  type SettlementOutcome,
+} from '../lib/staking';
 
 const {
   creditAccounts,
@@ -747,4 +759,189 @@ export async function creditRoutes(app: FastifyInstance) {
       };
     }
   );
+
+  // Staking request schemas
+  const stakeRequestSchema = z.object({
+    matchId: z.string().uuid(),
+    amount: z.number().int().positive().optional(), // Optional, can use default
+  });
+
+  const releaseRequestSchema = z.object({
+    matchId: z.string().uuid(),
+    reason: z.enum(['forfeit', 'cancelled']).default('forfeit'),
+  });
+
+  const settleRequestSchema = z.object({
+    outcome: z.enum(['winner_a', 'winner_b', 'tie', 'cancelled']),
+  });
+
+  /**
+   * POST /api/credits/stake
+   * Create a stake hold for a match
+   */
+  app.post('/api/credits/stake', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const parseResult = stakeRequestSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid request body', {
+        issues: parseResult.error.issues,
+      });
+    }
+
+    const { matchId, amount: requestedAmount } = parseResult.data;
+
+    // Get stake amount (from config or use requested)
+    const stakeAmount = requestedAmount || await getMatchStakeAmount(matchId);
+
+    // Check if user can stake
+    const hasBalance = await canStake(userId, stakeAmount);
+    if (!hasBalance) {
+      return reply.status(400).send({
+        error: 'insufficient_balance',
+        errorDescription: 'Insufficient available balance for stake',
+      });
+    }
+
+    try {
+      const result = await createStakeHold(userId, matchId, stakeAmount);
+
+      return reply.status(201).send({
+        data: {
+          holdId: result.holdId,
+          amount: result.amount,
+          idempotencyKey: result.idempotencyKey,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Stake creation failed';
+      return reply.status(400).send({
+        error: 'stake_failed',
+        errorDescription: message,
+      });
+    }
+  });
+
+  /**
+   * POST /api/credits/release
+   * Release a stake hold (forfeit/cancel)
+   */
+  app.post('/api/credits/release', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const parseResult = releaseRequestSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid request body', {
+        issues: parseResult.error.issues,
+      });
+    }
+
+    const { matchId, reason } = parseResult.data;
+
+    try {
+      const result = await releaseStakeHold(userId, matchId, reason);
+
+      if (!result) {
+        return reply.status(404).send({
+          error: 'not_found',
+          errorDescription: 'No active stake hold found for this match',
+        });
+      }
+
+      return reply.status(200).send({
+        data: {
+          holdId: result.holdId,
+          amountReleased: result.amountReleased,
+          idempotencyKey: result.idempotencyKey,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Release failed';
+      return reply.status(400).send({
+        error: 'release_failed',
+        errorDescription: message,
+      });
+    }
+  });
+
+  /**
+   * POST /api/credits/settle/:matchId
+   * Settle match stakes (admin/system endpoint)
+   */
+  app.post('/api/credits/settle/:matchId', async (request: FastifyRequest, reply: FastifyReply) => {
+    // In production, this would require admin authentication
+    // For now, we'll use x-user-id header for basic auth check
+    const userId = getUserId(request);
+
+    const { matchId } = request.params as { matchId: string };
+
+    // Validate matchId
+    if (!matchId || !/^[0-9a-f-]{36}$/i.test(matchId)) {
+      throw new ValidationError('Invalid match ID');
+    }
+
+    const parseResult = settleRequestSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      throw new ValidationError('Invalid request body', {
+        issues: parseResult.error.issues,
+      });
+    }
+
+    const { outcome } = parseResult.data;
+
+    try {
+      const result = await settleMatch(matchId, outcome as SettlementOutcome);
+
+      return reply.status(200).send({
+        data: {
+          matchId: result.matchId,
+          outcome: result.outcome,
+          winnerId: result.winnerId,
+          distributions: result.distributions,
+          platformFee: result.platformFee,
+          idempotencyKey: result.idempotencyKey,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Settlement failed';
+      return reply.status(400).send({
+        error: 'settlement_failed',
+        errorDescription: message,
+      });
+    }
+  });
+
+  /**
+   * GET /api/credits/can-stake
+   * Check if user can stake a specific amount
+   */
+  app.get('/api/credits/can-stake', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+    const { amount, matchId } = request.query as { amount?: string; matchId?: string };
+
+    let stakeAmount: number;
+
+    if (amount) {
+      stakeAmount = parseInt(amount, 10);
+      if (isNaN(stakeAmount) || stakeAmount <= 0) {
+        throw new ValidationError('Invalid amount');
+      }
+    } else if (matchId) {
+      stakeAmount = await getMatchStakeAmount(matchId);
+    } else {
+      throw new ValidationError('Either amount or matchId required');
+    }
+
+    const hasBalance = await canStake(userId, stakeAmount);
+    const account = await getOrCreateCreditAccount(userId);
+
+    return reply.status(200).send({
+      data: {
+        canStake: hasBalance,
+        requiredAmount: stakeAmount,
+        availableBalance: account.balanceAvailable,
+        shortfall: hasBalance ? 0 : stakeAmount - account.balanceAvailable,
+      },
+    });
+  });
 }
