@@ -55,5 +55,24 @@
   }
   body {
     @apply bg-background text-foreground;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+/* Smooth transition for all theme-aware elements */
+.transition-theme {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Ensure cards and common elements transition smoothly */
+@layer components {
+  .bg-card,
+  .bg-popover,
+  .bg-muted,
+  .bg-accent,
+  .bg-background,
+  .border,
+  [class*="bg-"] {
+    transition: background-color 0.3s ease, border-color 0.3s ease;
   }
 }

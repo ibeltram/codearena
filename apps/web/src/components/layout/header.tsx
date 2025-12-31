@@ -4,15 +4,13 @@ import Link from 'next/link';
 import {
   Menu,
   Trophy,
-  User,
   Wallet,
-  LogOut,
-  Settings,
   Swords,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ThemeToggleDropdown } from '@/components/ui/theme-toggle';
 import { useAuthStore } from '@/store';
 import { useUIStore } from '@/store';
 
@@ -73,6 +71,7 @@ export function Header() {
 
         {/* Right side actions */}
         <div className="flex flex-1 items-center justify-end space-x-2">
+          <ThemeToggleDropdown />
           {isAuthenticated && user ? (
             <>
               <Link href="/wallet">

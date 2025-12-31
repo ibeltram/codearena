@@ -44,5 +44,8 @@
     "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "next-themes": "^0.4.6"
   }
 }
