@@ -142,7 +142,9 @@ export default function ChallengeDetailPage() {
 
   const { latestVersion, versionCount } = challenge;
   const hasTemplate = !!latestVersion?.templateRef;
-  const requirements = latestVersion?.requirementsJson || [];
+  // requirementsJson has structure { requirements: [...], tieBreakers: [...] }
+  const requirementsData = latestVersion?.requirementsJson as { requirements?: Array<{ id: string; title: string; description: string; weight: number }> } | null;
+  const requirements = requirementsData?.requirements || [];
   const constraints = latestVersion?.constraintsJson;
 
   return (
