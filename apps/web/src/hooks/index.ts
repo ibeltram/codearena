@@ -1,3 +1,10 @@
+export {
+  useArtifact,
+  useArtifactFile,
+  useDownloadArtifact,
+  useScanArtifact,
+  getMockFileContent,
+} from './use-artifact';
 export { useChallenges } from './use-challenges';
 export {
   useLeaderboard,

@@ -1285,6 +1285,288 @@ export async function submissionRoutes(app: FastifyInstance) {
   );
 
   /**
+   * GET /api/artifacts/:id/files/:path
+   * Get file content from an artifact
+   */
+  app.get(
+    '/api/artifacts/:id/files/*',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              content: { type: 'string' },
+              language: { type: 'string' },
+              size: { type: 'number' },
+              lineCount: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = request.params as { id: string; '*': string };
+      const artifactId = params.id;
+      const filePath = params['*'];
+
+      if (!filePath) {
+        throw new ValidationError('File path is required');
+      }
+
+      // Get artifact
+      const [artifact] = await db
+        .select()
+        .from(artifacts)
+        .where(eq(artifacts.id, artifactId));
+
+      if (!artifact) {
+        throw new NotFoundError('Artifact', artifactId);
+      }
+
+      // Check if file exists in manifest
+      const manifest = artifact.manifestJson as any;
+      const files = manifest?.files || [];
+      const fileInfo = files.find((f: any) => f.path === filePath);
+
+      if (!fileInfo) {
+        throw new NotFoundError('File', filePath);
+      }
+
+      // Check if binary
+      if (fileInfo.isBinary) {
+        throw new ValidationError('Binary files cannot be previewed');
+      }
+
+      // In production, would fetch actual content from S3
+      // For now, return mock content based on file extension
+      const ext = filePath.split('.').pop()?.toLowerCase() || '';
+      const filename = filePath.split('/').pop() || filePath;
+
+      let content = '';
+      let language = 'plaintext';
+
+      // Map extension to language
+      const languageMap: Record<string, string> = {
+        js: 'javascript',
+        jsx: 'javascript',
+        ts: 'typescript',
+        tsx: 'typescript',
+        json: 'json',
+        html: 'html',
+        css: 'css',
+        md: 'markdown',
+        py: 'python',
+        go: 'go',
+        rs: 'rust',
+        java: 'java',
+        sql: 'sql',
+        yaml: 'yaml',
+        yml: 'yaml',
+        sh: 'bash',
+      };
+
+      language = languageMap[ext] || 'plaintext';
+
+      // Generate mock content
+      switch (ext) {
+        case 'ts':
+        case 'tsx':
+          content = `// ${filename}
+import React from 'react';
+
+interface Props {
+  title: string;
+  children: React.ReactNode;
+}
+
+export function Component({ title, children }: Props) {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <div className="container">
+      <h1>{title}</h1>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(c => c + 1)}>
+        Increment
+      </button>
+      {children}
+    </div>
+  );
+}
+
+export default Component;
+`;
+          break;
+
+        case 'json':
+          content = `{
+  "name": "${filename.replace('.json', '')}",
+  "version": "1.0.0",
+  "description": "Sample configuration file",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "react": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
+`;
+          break;
+
+        case 'md':
+          content = `# ${filename.replace('.md', '')}
+
+This is a sample README file for the submission.
+
+## Getting Started
+
+1. Install dependencies: \`npm install\`
+2. Run the development server: \`npm run dev\`
+3. Open [http://localhost:3000](http://localhost:3000)
+
+## Features
+
+- Feature one: Description of the first feature
+- Feature two: Description of the second feature
+- Feature three: Description of the third feature
+
+## Technical Details
+
+This project uses:
+- React 18
+- TypeScript 5
+- Tailwind CSS
+
+## License
+
+MIT
+`;
+          break;
+
+        case 'css':
+          content = `/* ${filename} */
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.button {
+  background-color: #3b82f6;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.button:hover {
+  background-color: #2563eb;
+}
+`;
+          break;
+
+        default:
+          content = `// Contents of ${filePath}
+// This is a preview of the file.
+// In production, actual file contents would be loaded from storage.
+`;
+      }
+
+      const lines = content.split('\n');
+
+      return {
+        path: filePath,
+        content,
+        language,
+        size: content.length,
+        lineCount: lines.length,
+      };
+    }
+  );
+
+  /**
+   * GET /api/artifacts/:id/download
+   * Get download URL for artifact zip
+   */
+  app.get(
+    '/api/artifacts/:id/download',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              downloadUrl: { type: 'string' },
+              filename: { type: 'string' },
+              size: { type: 'number' },
+              expiresIn: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = request.params as { id: string };
+
+      const [artifact] = await db
+        .select()
+        .from(artifacts)
+        .where(eq(artifacts.id, params.id));
+
+      if (!artifact) {
+        throw new NotFoundError('Artifact', params.id);
+      }
+
+      // Block download if flagged
+      if (artifact.secretScanStatus === 'flagged') {
+        throw new ForbiddenError('This artifact contains sensitive content and cannot be downloaded publicly');
+      }
+
+      // In production, generate presigned S3 URL
+      // For now, return mock URL
+      const manifest = artifact.manifestJson as any;
+      const filename = manifest?.metadata?.originalFilename || `artifact-${artifact.contentHash.slice(0, 8)}.zip`;
+
+      return {
+        downloadUrl: `/api/storage/download?key=${encodeURIComponent(artifact.storageKey)}`,
+        filename,
+        size: artifact.sizeBytes,
+        expiresIn: 3600,
+      };
+    }
+  );
+
+  /**
    * POST /api/artifacts/:id/scan
    * Trigger secret scan on an artifact (admin/internal use)
    * In production, this would be triggered automatically via queue
