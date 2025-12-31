@@ -248,3 +248,110 @@ export function getTimeUntilStart(startAt: string): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
+
+// ============================================
+// Prize Claim Types
+// ============================================
+
+export type PrizeType = 'cash' | 'crypto' | 'hardware' | 'saas_bundle';
+export type PrizeClaimStatus = 'pending' | 'approved' | 'fulfilled' | 'denied';
+
+export interface ShippingAddress {
+  name: string;
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+}
+
+export interface PaymentDetails {
+  paypalEmail?: string;
+  walletAddress?: string;
+  shippingAddress?: ShippingAddress;
+}
+
+export interface PrizeClaim {
+  id: string;
+  tournamentId: string;
+  userId?: string;
+  prizeType: PrizeType;
+  amountOrBundleRef: string;
+  placement: number;
+  paymentDetailsJson?: PaymentDetails;
+  status: PrizeClaimStatus;
+  adminNotes?: string;
+  denialReason?: string;
+  createdAt: string;
+  reviewedAt?: string;
+  fulfilledAt?: string;
+  tournament?: {
+    id: string;
+    name: string;
+  };
+  user?: {
+    id: string;
+    displayName: string;
+    email: string;
+  };
+}
+
+export interface PrizeClaimsResponse {
+  data: PrizeClaim[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface PrizeClaimFilters {
+  page?: number;
+  limit?: number;
+  status?: PrizeClaimStatus;
+  tournamentId?: string;
+}
+
+export interface CreatePrizeClaimRequest {
+  prizeType: PrizeType;
+  paymentDetails: PaymentDetails;
+}
+
+export interface CreatePrizeClaimResponse {
+  id: string;
+  tournamentId: string;
+  placement: number;
+  prizeType: PrizeType;
+  value: string;
+  status: PrizeClaimStatus;
+  message: string;
+}
+
+export interface AdminUpdatePrizeClaimRequest {
+  status: 'approved' | 'denied' | 'fulfilled';
+  adminNotes?: string;
+  denialReason?: string;
+}
+
+// Display helpers for prize claims
+export const prizeTypeLabels: Record<PrizeType, string> = {
+  cash: 'Cash',
+  crypto: 'Cryptocurrency',
+  hardware: 'Hardware',
+  saas_bundle: 'SaaS Bundle',
+};
+
+export const prizeClaimStatusLabels: Record<PrizeClaimStatus, string> = {
+  pending: 'Pending Review',
+  approved: 'Approved',
+  fulfilled: 'Fulfilled',
+  denied: 'Denied',
+};
+
+export const prizeClaimStatusColors: Record<PrizeClaimStatus, string> = {
+  pending: 'bg-yellow-500',
+  approved: 'bg-green-500',
+  fulfilled: 'bg-blue-500',
+  denied: 'bg-red-500',
+};

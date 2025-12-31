@@ -25,6 +25,7 @@ const {
   tournaments,
   tournamentRegistrations,
   tournamentBracketMatches,
+  prizeClaims,
   users,
   challenges,
   creditAccounts,
@@ -70,6 +71,40 @@ const updateTournamentSchema = z.object({
   entryFeeCredits: z.number().int().min(0).optional(),
   prizePoolJson: z.record(z.unknown()).optional(),
   rulesJson: z.record(z.unknown()).optional(),
+});
+
+// Prize claim schemas
+const createPrizeClaimSchema = z.object({
+  prizeType: z.enum(['cash', 'crypto', 'hardware', 'saas_bundle']),
+  paymentDetails: z.object({
+    paypalEmail: z.string().email().optional(),
+    walletAddress: z.string().optional(),
+    shippingAddress: z.object({
+      name: z.string(),
+      street: z.string(),
+      city: z.string(),
+      state: z.string(),
+      postalCode: z.string(),
+      country: z.string(),
+    }).optional(),
+  }),
+});
+
+const listPrizeClaimsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(['pending', 'approved', 'fulfilled', 'denied']).optional(),
+  tournamentId: z.string().uuid().optional(),
+});
+
+const prizeClaimIdParamSchema = z.object({
+  claimId: z.string().uuid(),
+});
+
+const adminUpdatePrizeClaimSchema = z.object({
+  status: z.enum(['approved', 'denied', 'fulfilled']),
+  adminNotes: z.string().optional(),
+  denialReason: z.string().optional(),
 });
 
 // Types for bracket generation
@@ -1100,6 +1135,452 @@ export async function tournamentRoutes(app: FastifyInstance) {
     return {
       ...updated,
       message: 'Tournament cancelled. Entry fees have been refunded.',
+    };
+  });
+
+  // ============================================
+  // Prize Claim Routes
+  // ============================================
+
+  // POST /api/tournaments/:id/prize-claims - Create a prize claim (for tournament winners)
+  app.post('/api/tournaments/:id/prize-claims', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const paramResult = tournamentIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid tournament ID', { issues: paramResult.error.issues });
+    }
+
+    const bodyResult = createPrizeClaimSchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      throw new ValidationError('Invalid request body', { issues: bodyResult.error.issues });
+    }
+
+    const { id: tournamentId } = paramResult.data;
+    const { prizeType, paymentDetails } = bodyResult.data;
+
+    // Get tournament
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    if (!tournament) {
+      throw new NotFoundError('Tournament', tournamentId);
+    }
+
+    // Tournament must be completed
+    if (tournament.status !== 'completed') {
+      throw new ConflictError('Prize claims can only be made for completed tournaments');
+    }
+
+    // Check user's placement in the tournament
+    const [registration] = await db
+      .select()
+      .from(tournamentRegistrations)
+      .where(
+        and(
+          eq(tournamentRegistrations.tournamentId, tournamentId),
+          eq(tournamentRegistrations.userId, userId)
+        )
+      );
+
+    if (!registration) {
+      throw new ForbiddenError('You are not a participant in this tournament');
+    }
+
+    if (!registration.finalPlacement) {
+      throw new ForbiddenError('Final placements have not been determined yet');
+    }
+
+    // Check prize pool for eligible placements
+    const prizePool = tournament.prizePoolJson as Record<string, unknown>;
+    const prizes = (prizePool.prizes || []) as Array<{ placement: number; type: string; value: string }>;
+
+    const eligiblePrize = prizes.find(p => p.placement === registration.finalPlacement);
+    if (!eligiblePrize) {
+      throw new ForbiddenError(`No prize available for placement ${registration.finalPlacement}`);
+    }
+
+    // Check if already claimed
+    const [existingClaim] = await db
+      .select()
+      .from(prizeClaims)
+      .where(
+        and(
+          eq(prizeClaims.tournamentId, tournamentId),
+          eq(prizeClaims.userId, userId)
+        )
+      );
+
+    if (existingClaim) {
+      throw new ConflictError('You have already submitted a prize claim for this tournament');
+    }
+
+    // Validate payment details based on prize type
+    if (prizeType === 'cash' && !paymentDetails.paypalEmail) {
+      throw new ValidationError('PayPal email is required for cash prizes');
+    }
+    if (prizeType === 'crypto' && !paymentDetails.walletAddress) {
+      throw new ValidationError('Wallet address is required for crypto prizes');
+    }
+    if (prizeType === 'hardware' && !paymentDetails.shippingAddress) {
+      throw new ValidationError('Shipping address is required for hardware prizes');
+    }
+
+    // Create prize claim
+    const [claim] = await db
+      .insert(prizeClaims)
+      .values({
+        tournamentId,
+        userId,
+        prizeType,
+        amountOrBundleRef: eligiblePrize.value,
+        placement: registration.finalPlacement,
+        paymentDetailsJson: paymentDetails,
+        status: 'pending',
+      })
+      .returning();
+
+    return reply.status(201).send({
+      id: claim.id,
+      tournamentId,
+      placement: registration.finalPlacement,
+      prizeType,
+      value: eligiblePrize.value,
+      status: 'pending',
+      message: 'Prize claim submitted successfully. An admin will review it shortly.',
+    });
+  });
+
+  // GET /api/prize-claims/mine - Get current user's prize claims
+  app.get('/api/prize-claims/mine', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const queryResult = listPrizeClaimsQuerySchema.safeParse(request.query);
+    if (!queryResult.success) {
+      throw new ValidationError('Invalid query parameters', { issues: queryResult.error.issues });
+    }
+
+    const { page, limit, status, tournamentId } = queryResult.data;
+    const offset = (page - 1) * limit;
+
+    const conditions = [eq(prizeClaims.userId, userId)];
+    if (status) conditions.push(eq(prizeClaims.status, status));
+    if (tournamentId) conditions.push(eq(prizeClaims.tournamentId, tournamentId));
+
+    // Get total count
+    const [countResult] = await db
+      .select({ total: count() })
+      .from(prizeClaims)
+      .where(and(...conditions));
+
+    const total = countResult?.total ?? 0;
+
+    // Get claims with tournament info
+    const claims = await db
+      .select({
+        id: prizeClaims.id,
+        tournamentId: prizeClaims.tournamentId,
+        prizeType: prizeClaims.prizeType,
+        amountOrBundleRef: prizeClaims.amountOrBundleRef,
+        placement: prizeClaims.placement,
+        status: prizeClaims.status,
+        denialReason: prizeClaims.denialReason,
+        createdAt: prizeClaims.createdAt,
+        reviewedAt: prizeClaims.reviewedAt,
+        fulfilledAt: prizeClaims.fulfilledAt,
+        tournament: {
+          id: tournaments.id,
+          name: tournaments.name,
+        },
+      })
+      .from(prizeClaims)
+      .innerJoin(tournaments, eq(prizeClaims.tournamentId, tournaments.id))
+      .where(and(...conditions))
+      .orderBy(desc(prizeClaims.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data: claims,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  });
+
+  // GET /api/prize-claims/:claimId - Get a specific prize claim
+  app.get('/api/prize-claims/:claimId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const paramResult = prizeClaimIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid claim ID', { issues: paramResult.error.issues });
+    }
+
+    const { claimId } = paramResult.data;
+
+    const [claim] = await db
+      .select({
+        id: prizeClaims.id,
+        tournamentId: prizeClaims.tournamentId,
+        userId: prizeClaims.userId,
+        prizeType: prizeClaims.prizeType,
+        amountOrBundleRef: prizeClaims.amountOrBundleRef,
+        placement: prizeClaims.placement,
+        paymentDetailsJson: prizeClaims.paymentDetailsJson,
+        status: prizeClaims.status,
+        adminNotes: prizeClaims.adminNotes,
+        denialReason: prizeClaims.denialReason,
+        createdAt: prizeClaims.createdAt,
+        reviewedAt: prizeClaims.reviewedAt,
+        fulfilledAt: prizeClaims.fulfilledAt,
+        tournament: {
+          id: tournaments.id,
+          name: tournaments.name,
+        },
+      })
+      .from(prizeClaims)
+      .innerJoin(tournaments, eq(prizeClaims.tournamentId, tournaments.id))
+      .where(eq(prizeClaims.id, claimId));
+
+    if (!claim) {
+      throw new NotFoundError('Prize claim', claimId);
+    }
+
+    // Users can only see their own claims (admins can see all via admin endpoint)
+    if (claim.userId !== userId && !isAdmin(request)) {
+      throw new ForbiddenError('You can only view your own prize claims');
+    }
+
+    return claim;
+  });
+
+  // ============================================
+  // Admin Prize Claim Routes
+  // ============================================
+
+  // GET /api/admin/prize-claims - List all prize claims (admin only)
+  app.get('/api/admin/prize-claims', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const queryResult = listPrizeClaimsQuerySchema.safeParse(request.query);
+    if (!queryResult.success) {
+      throw new ValidationError('Invalid query parameters', { issues: queryResult.error.issues });
+    }
+
+    const { page, limit, status, tournamentId } = queryResult.data;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (status) conditions.push(eq(prizeClaims.status, status));
+    if (tournamentId) conditions.push(eq(prizeClaims.tournamentId, tournamentId));
+
+    // Get total count
+    const [countResult] = await db
+      .select({ total: count() })
+      .from(prizeClaims)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+
+    const total = countResult?.total ?? 0;
+
+    // Get claims with user and tournament info
+    const claims = await db
+      .select({
+        id: prizeClaims.id,
+        tournamentId: prizeClaims.tournamentId,
+        userId: prizeClaims.userId,
+        prizeType: prizeClaims.prizeType,
+        amountOrBundleRef: prizeClaims.amountOrBundleRef,
+        placement: prizeClaims.placement,
+        paymentDetailsJson: prizeClaims.paymentDetailsJson,
+        status: prizeClaims.status,
+        adminNotes: prizeClaims.adminNotes,
+        denialReason: prizeClaims.denialReason,
+        createdAt: prizeClaims.createdAt,
+        reviewedAt: prizeClaims.reviewedAt,
+        fulfilledAt: prizeClaims.fulfilledAt,
+        user: {
+          id: users.id,
+          displayName: users.displayName,
+          email: users.email,
+        },
+        tournament: {
+          id: tournaments.id,
+          name: tournaments.name,
+        },
+      })
+      .from(prizeClaims)
+      .innerJoin(users, eq(prizeClaims.userId, users.id))
+      .innerJoin(tournaments, eq(prizeClaims.tournamentId, tournaments.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(prizeClaims.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data: claims,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  });
+
+  // PATCH /api/admin/prize-claims/:claimId - Update prize claim status (admin only)
+  app.patch('/api/admin/prize-claims/:claimId', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const adminUserId = getUserId(request);
+
+    const paramResult = prizeClaimIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid claim ID', { issues: paramResult.error.issues });
+    }
+
+    const bodyResult = adminUpdatePrizeClaimSchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      throw new ValidationError('Invalid request body', { issues: bodyResult.error.issues });
+    }
+
+    const { claimId } = paramResult.data;
+    const { status, adminNotes, denialReason } = bodyResult.data;
+
+    // Get existing claim
+    const [claim] = await db
+      .select()
+      .from(prizeClaims)
+      .where(eq(prizeClaims.id, claimId));
+
+    if (!claim) {
+      throw new NotFoundError('Prize claim', claimId);
+    }
+
+    // Validate status transitions
+    if (claim.status === 'fulfilled') {
+      throw new ConflictError('Cannot update a fulfilled claim');
+    }
+    if (claim.status === 'denied' && status !== 'approved') {
+      throw new ConflictError('Denied claims can only be changed to approved');
+    }
+    if (status === 'denied' && !denialReason) {
+      throw new ValidationError('Denial reason is required when denying a claim');
+    }
+
+    // Build update object
+    const updateData: Record<string, unknown> = {
+      status,
+      updatedAt: new Date(),
+    };
+
+    if (adminNotes) updateData.adminNotes = adminNotes;
+    if (denialReason) updateData.denialReason = denialReason;
+
+    // Set timestamps based on new status
+    if (status === 'approved' || status === 'denied') {
+      updateData.reviewedBy = adminUserId;
+      updateData.reviewedAt = new Date();
+    }
+    if (status === 'fulfilled') {
+      updateData.fulfilledAt = new Date();
+    }
+
+    const [updated] = await db
+      .update(prizeClaims)
+      .set(updateData)
+      .where(eq(prizeClaims.id, claimId))
+      .returning();
+
+    return {
+      ...updated,
+      message: `Prize claim ${status === 'approved' ? 'approved' : status === 'denied' ? 'denied' : 'marked as fulfilled'}`,
+    };
+  });
+
+  // POST /api/admin/prize-claims/:claimId/approve - Quick approve endpoint
+  app.post('/api/admin/prize-claims/:claimId/approve', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const adminUserId = getUserId(request);
+
+    const paramResult = prizeClaimIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid claim ID', { issues: paramResult.error.issues });
+    }
+
+    const { claimId } = paramResult.data;
+
+    const [claim] = await db
+      .select()
+      .from(prizeClaims)
+      .where(eq(prizeClaims.id, claimId));
+
+    if (!claim) {
+      throw new NotFoundError('Prize claim', claimId);
+    }
+
+    if (claim.status !== 'pending') {
+      throw new ConflictError(`Cannot approve claim with status '${claim.status}'`);
+    }
+
+    const [updated] = await db
+      .update(prizeClaims)
+      .set({
+        status: 'approved',
+        reviewedBy: adminUserId,
+        reviewedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(prizeClaims.id, claimId))
+      .returning();
+
+    return {
+      ...updated,
+      message: 'Prize claim approved',
+    };
+  });
+
+  // POST /api/admin/prize-claims/:claimId/fulfill - Mark claim as fulfilled
+  app.post('/api/admin/prize-claims/:claimId/fulfill', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const paramResult = prizeClaimIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid claim ID', { issues: paramResult.error.issues });
+    }
+
+    const { claimId } = paramResult.data;
+
+    const [claim] = await db
+      .select()
+      .from(prizeClaims)
+      .where(eq(prizeClaims.id, claimId));
+
+    if (!claim) {
+      throw new NotFoundError('Prize claim', claimId);
+    }
+
+    if (claim.status !== 'approved') {
+      throw new ConflictError('Only approved claims can be marked as fulfilled');
+    }
+
+    const [updated] = await db
+      .update(prizeClaims)
+      .set({
+        status: 'fulfilled',
+        fulfilledAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(prizeClaims.id, claimId))
+      .returning();
+
+    return {
+      ...updated,
+      message: 'Prize claim marked as fulfilled',
     };
   });
 }

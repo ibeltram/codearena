@@ -95,3 +95,13 @@ export {
   useRedeemReward,
   rewardsKeys,
 } from './use-rewards';
+export {
+  useMyPrizeClaims,
+  usePrizeClaim,
+  useCreatePrizeClaim,
+  useAdminPrizeClaims,
+  useUpdatePrizeClaim,
+  useApprovePrizeClaim,
+  useFulfillPrizeClaim,
+  prizeClaimKeys,
+} from './use-prize-claims';

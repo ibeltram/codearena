@@ -107,7 +107,14 @@ export const prizeClaims = pgTable('prize_claims', {
     .references(() => users.id),
   prizeType: prizeTypeEnum('prize_type').notNull(),
   amountOrBundleRef: varchar('amount_or_bundle_ref', { length: 500 }).notNull(),
+  placement: integer('placement').notNull(), // 1st, 2nd, 3rd, etc.
+  paymentDetailsJson: jsonb('payment_details_json').notNull().default({}), // PayPal email, wallet address, shipping info
   status: prizeClaimStatusEnum('status').notNull().default('pending'),
+  adminNotes: text('admin_notes'),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+  denialReason: text('denial_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

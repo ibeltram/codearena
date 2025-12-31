@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   Shield,
+  Gift,
 } from 'lucide-react';
 
 import { Header } from '@/components/layout/header';
@@ -17,6 +18,7 @@ const adminNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/challenges', label: 'Challenges', icon: FileCode },
   { href: '/admin/disputes', label: 'Disputes', icon: AlertTriangle },
+  { href: '/admin/prize-claims', label: 'Prize Claims', icon: Gift },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];

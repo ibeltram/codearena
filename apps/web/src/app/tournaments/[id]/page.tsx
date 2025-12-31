@@ -19,6 +19,7 @@ import {
   TournamentHeader,
   BracketViewer,
   BracketList,
+  PrizeClaimCard,
 } from '@/components/tournaments';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,7 @@ import {
   useWithdrawFromTournament,
   useCheckInToTournament,
 } from '@/hooks/use-tournament';
-import { BracketMatch } from '@/types/tournament';
+import { BracketMatch, PrizeType } from '@/types/tournament';
 import { useAuthStore } from '@/store';
 
 type TabType = 'bracket' | 'participants' | 'rules';
@@ -90,6 +91,32 @@ export default function TournamentDetailPage() {
       (participant) => participant.user.id === currentUserId
     );
   }, [isAuthenticated, currentUserId, participantsData?.participants]);
+
+  // Get user's placement for prize claim eligibility
+  const userPlacement = useMemo(() => {
+    if (!isAuthenticated || !currentUserId || !participantsData?.participants) {
+      return null;
+    }
+    const userParticipant = participantsData.participants.find(
+      (p) => p.user.id === currentUserId
+    );
+    return userParticipant?.finalPlacement || null;
+  }, [isAuthenticated, currentUserId, participantsData?.participants]);
+
+  // Get prize info for user's placement
+  const prizeInfo = useMemo(() => {
+    if (!userPlacement || !tournament?.prizePoolJson) {
+      return null;
+    }
+    const prizePool = tournament.prizePoolJson as {
+      prizes?: Array<{ placement: number; type: PrizeType; value: string }>;
+    };
+    if (!prizePool.prizes) {
+      return null;
+    }
+    const prize = prizePool.prizes.find((p) => p.placement === userPlacement);
+    return prize || null;
+  }, [userPlacement, tournament?.prizePoolJson]);
 
   if (isLoading) {
     return (
@@ -174,6 +201,15 @@ export default function TournamentDetailPage() {
           onRegister={handleRegister}
           onWithdraw={handleWithdraw}
           onCheckIn={handleCheckIn}
+        />
+
+        {/* Prize claim card for eligible winners */}
+        <PrizeClaimCard
+          tournamentId={tournamentId}
+          tournamentName={tournament.name}
+          isCompleted={tournament.status === 'completed'}
+          userPlacement={userPlacement}
+          prizeInfo={prizeInfo}
         />
 
         {/* Tabs */}
