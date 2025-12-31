@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ChallengesProvider, MatchProvider, HistoryProvider } from './providers';
-import { StatusBarService, AuthService, MatchService } from './services';
-import { ActiveMatchPanel } from './panels/active-match-panel';
+import { StatusBarService, AuthService, MatchService, SubmissionService, SubmissionSummary } from './services';
+import { ActiveMatchPanel, SubmissionPanel } from './panels';
 import { Challenge, MatchHistoryItem, ExtensionConfig } from './types';
 
 // Global providers and services
@@ -11,6 +11,7 @@ let historyProvider: HistoryProvider;
 let statusBarService: StatusBarService;
 let authService: AuthService;
 let matchService: MatchService;
+let submissionService: SubmissionService;
 
 // Extension state
 let isAuthenticated = false;
@@ -255,10 +256,81 @@ function registerCommands(context: vscode.ExtensionContext): void {
       targetFolder = selected;
     }
 
-    // TODO: Implement file preview and upload
-    vscode.window.showInformationMessage(
-      `CodeArena: Submitting from ${targetFolder.name}... (not yet implemented)`
-    );
+    // Current submission summary for the panel
+    let currentSummary: SubmissionSummary | null = null;
+
+    try {
+      // Scan workspace for files
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'CodeArena: Scanning workspace...',
+          cancellable: false,
+        },
+        async () => {
+          currentSummary = await submissionService.scanWorkspace(targetFolder.uri.fsPath);
+        }
+      );
+
+      // Wait for scan to complete
+      currentSummary = await submissionService.scanWorkspace(targetFolder.uri.fsPath);
+
+      // Show the submission panel with file preview
+      const panel = SubmissionPanel.createOrShow(
+        context.extensionUri,
+        match.id,
+        currentSummary,
+        {
+          onSubmit: async (summary) => {
+            try {
+              // Show progress in the panel
+              const progressListener = submissionService.onProgressUpdate((progress) => {
+                if (SubmissionPanel.currentPanel) {
+                  SubmissionPanel.currentPanel.setProgress(progress);
+                }
+              });
+
+              const submissionId = await submissionService.uploadSubmission(match.id, summary);
+
+              progressListener.dispose();
+
+              if (submissionId) {
+                vscode.window.showInformationMessage(
+                  `CodeArena: Submission complete! ${summary.files.filter((f) => !f.isExcluded).length} files uploaded.`
+                );
+
+                // Update context
+                await vscode.commands.executeCommand('setContext', 'codearena.hasSubmitted', true);
+
+                // Close the panel after success
+                if (SubmissionPanel.currentPanel) {
+                  SubmissionPanel.currentPanel.dispose();
+                }
+              }
+            } catch (error) {
+              vscode.window.showErrorMessage(
+                `CodeArena: Submission failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+              );
+            }
+          },
+          onToggleFile: (relativePath) => {
+            if (currentSummary) {
+              currentSummary = submissionService.toggleFileExclusion(currentSummary, relativePath);
+              if (SubmissionPanel.currentPanel) {
+                SubmissionPanel.currentPanel.setSummary(currentSummary, match.id);
+              }
+            }
+          },
+          onCancel: () => {
+            // Nothing to do, panel will close itself
+          },
+        }
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `CodeArena: Failed to scan workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   });
 
   // Lock Submission
@@ -496,6 +568,12 @@ export function activate(context: vscode.ExtensionContext) {
     getConfig
   );
 
+  // Initialize submission service
+  submissionService = new SubmissionService(
+    () => authService.getAccessToken(),
+    getConfig
+  );
+
   // Listen for match updates from the service
   matchService.onMatchUpdate((match) => {
     matchProvider.setMatch(match);
@@ -563,6 +641,7 @@ export function activate(context: vscode.ExtensionContext) {
       statusBarService.dispose();
       authService.dispose();
       matchService.dispose();
+      submissionService.dispose();
     },
   });
 
@@ -607,4 +686,5 @@ export function deactivate() {
   statusBarService?.dispose();
   authService?.dispose();
   matchService?.dispose();
+  submissionService?.dispose();
 }
