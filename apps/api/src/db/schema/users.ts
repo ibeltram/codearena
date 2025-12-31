@@ -35,8 +35,27 @@ export const oauthAccounts = pgTable('oauth_accounts', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Session/device tokens table
+export const sessions = pgTable('sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(),
+  deviceName: varchar('device_name', { length: 255 }),
+  deviceType: varchar('device_type', { length: 50 }), // 'vscode', 'web', 'mobile'
+  ipAddress: varchar('ip_address', { length: 45 }),
+  userAgent: varchar('user_agent', { length: 500 }),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type OAuthAccount = typeof oauthAccounts.$inferSelect;
 export type NewOAuthAccount = typeof oauthAccounts.$inferInsert;
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;

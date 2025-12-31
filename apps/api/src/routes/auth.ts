@@ -1,184 +1,104 @@
+/**
+ * Authentication Routes
+ *
+ * Implements secure session management with:
+ * - Device code flow for VS Code extension
+ * - JWT access tokens (15 min expiry)
+ * - Refresh token rotation (30 day expiry)
+ * - Session/device management
+ * - Rate limiting on auth endpoints
+ */
+
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import crypto from 'crypto';
+import {
+  generateTokenPair,
+  refreshTokens,
+  verifyAccessToken,
+  revokeSession,
+  revokeAllSessions,
+  getUserSessions,
+  getUserById,
+  getDeviceInfo,
+  createDeviceCode,
+  getDeviceCode,
+  getDeviceCodeByUserCode,
+  authorizeDeviceCode,
+  consumeDeviceCode,
+  cleanupExpiredDeviceCodes,
+  checkRateLimit,
+  blacklistAccessToken,
+} from '../lib/session';
+import { env } from '../lib/env';
 
-// In-memory store for device codes (would use Redis in production)
-interface DeviceCodeEntry {
-  deviceCode: string;
-  userCode: string;
-  verificationUri: string;
-  expiresAt: Date;
-  interval: number;
-  authorized: boolean;
-  userId?: string;
-  tokens?: {
-    accessToken: string;
-    refreshToken: string;
-    expiresIn: number;
-  };
-}
+// Cleanup expired device codes every minute
+setInterval(cleanupExpiredDeviceCodes, 60 * 1000);
 
-interface RefreshTokenEntry {
-  userId: string;
-  deviceId: string;
-  createdAt: Date;
-  expiresAt: Date;
-}
-
-// Simple in-memory stores (would be Redis in production)
-const deviceCodes: Map<string, DeviceCodeEntry> = new Map();
-const refreshTokens: Map<string, RefreshTokenEntry> = new Map();
-const usersByCode: Map<string, string> = new Map(); // userCode -> deviceCode
-
-// Mock user database (would be real DB in production)
-const mockUsers = new Map<string, { id: string; email: string; displayName: string; avatarUrl?: string }>();
-
-// Initialize some mock users
-mockUsers.set('test-user-1', {
-  id: 'test-user-1',
-  email: 'test@codearena.dev',
-  displayName: 'Test User',
-  avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=test',
-});
-
-// Helper functions
-function generateCode(length: number = 32): string {
-  return crypto.randomBytes(length).toString('hex');
-}
-
-function generateUserCode(): string {
-  // Generate an 8-character alphanumeric code (easy to type)
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude confusing chars (0, O, I, 1)
-  let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  // Format as XXXX-XXXX for readability
-  return `${code.slice(0, 4)}-${code.slice(4)}`;
-}
-
-function generateAccessToken(userId: string): string {
-  // In production, use JWT with proper signing
-  const payload = {
-    sub: userId,
-    iat: Date.now(),
-    exp: Date.now() + 15 * 60 * 1000, // 15 minutes
-    type: 'access',
-  };
-  return Buffer.from(JSON.stringify(payload)).toString('base64');
-}
-
-function generateRefreshToken(): string {
-  return generateCode(64);
-}
-
-function validateAccessToken(token: string): { valid: boolean; userId?: string; expired?: boolean } {
-  try {
-    const payload = JSON.parse(Buffer.from(token, 'base64').toString());
-    if (payload.type !== 'access') {
-      return { valid: false };
-    }
-    if (payload.exp < Date.now()) {
-      return { valid: false, expired: true };
-    }
-    return { valid: true, userId: payload.sub };
-  } catch {
-    return { valid: false };
-  }
-}
-
-// Cleanup expired entries periodically
-function cleanupExpiredEntries() {
-  const now = new Date();
-
-  // Cleanup device codes
-  for (const [code, entry] of deviceCodes.entries()) {
-    if (entry.expiresAt < now) {
-      deviceCodes.delete(code);
-      // Also cleanup user code mapping
-      for (const [userCode, dCode] of usersByCode.entries()) {
-        if (dCode === code) {
-          usersByCode.delete(userCode);
-        }
-      }
-    }
-  }
-
-  // Cleanup refresh tokens
-  for (const [token, entry] of refreshTokens.entries()) {
-    if (entry.expiresAt < now) {
-      refreshTokens.delete(token);
-    }
-  }
-}
-
-// Run cleanup every minute
-setInterval(cleanupExpiredEntries, 60 * 1000);
-
-// Schemas
-const deviceStartResponseSchema = z.object({
-  deviceCode: z.string(),
-  userCode: z.string(),
-  verificationUri: z.string(),
-  expiresIn: z.number(),
-  interval: z.number(),
-});
-
+// Request schemas
 const deviceConfirmRequestSchema = z.object({
-  deviceCode: z.string(),
+  deviceCode: z.string().min(1),
 });
 
 const authorizeRequestSchema = z.object({
-  userCode: z.string(),
-  // In production, would also have user authentication
+  userCode: z.string().regex(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/),
 });
 
 const refreshRequestSchema = z.object({
-  refreshToken: z.string(),
+  refreshToken: z.string().min(1),
 });
+
+const revokeSessionSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+// Rate limit configuration
+const AUTH_RATE_LIMIT = {
+  refresh: { max: 10, window: 60 }, // 10 requests per minute
+  login: { max: 5, window: 300 }, // 5 requests per 5 minutes
+  deviceStart: { max: 10, window: 300 }, // 10 device flows per 5 minutes
+};
 
 export async function authRoutes(app: FastifyInstance) {
   /**
    * POST /api/auth/device/start
-   * Start the device code flow
-   * Returns device code, user code, and verification URL
+   * Start the device code flow (for VS Code extension)
    */
   app.post('/api/auth/device/start', async (request: FastifyRequest, reply: FastifyReply) => {
-    const deviceCode = generateCode(32);
-    const userCode = generateUserCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const deviceInfo = getDeviceInfo(request);
+    const rateLimitKey = `device:${deviceInfo.ipAddress || 'unknown'}`;
 
-    // Get verification URL from env or default
-    const verificationUri = process.env.WEB_URL
-      ? `${process.env.WEB_URL}/device`
-      : 'http://localhost:3001/device';
+    const { allowed, remaining, resetIn } = await checkRateLimit(
+      rateLimitKey,
+      AUTH_RATE_LIMIT.deviceStart.max,
+      AUTH_RATE_LIMIT.deviceStart.window
+    );
 
-    const entry: DeviceCodeEntry = {
-      deviceCode,
-      userCode,
-      verificationUri,
-      expiresAt,
-      interval: 5, // Poll interval in seconds
-      authorized: false,
-    };
+    reply.header('X-RateLimit-Remaining', remaining);
+    reply.header('X-RateLimit-Reset', resetIn);
 
-    deviceCodes.set(deviceCode, entry);
-    usersByCode.set(userCode, deviceCode);
+    if (!allowed) {
+      return reply.status(429).send({
+        error: 'rate_limit_exceeded',
+        errorDescription: 'Too many device code requests. Please try again later.',
+        retryAfter: resetIn,
+      });
+    }
+
+    const entry = createDeviceCode();
 
     return reply.status(200).send({
-      deviceCode,
-      userCode,
-      verificationUri,
-      verificationUriComplete: `${verificationUri}?code=${userCode}`,
-      expiresIn: 600, // 10 minutes in seconds
-      interval: 5, // Poll every 5 seconds
+      deviceCode: entry.deviceCode,
+      userCode: entry.userCode,
+      verificationUri: entry.verificationUri,
+      verificationUriComplete: `${entry.verificationUri}?code=${entry.userCode}`,
+      expiresIn: Math.floor((entry.expiresAt.getTime() - Date.now()) / 1000),
+      interval: entry.interval,
     });
   });
 
   /**
    * POST /api/auth/device/confirm
    * Poll endpoint for the device to check authorization status
-   * Returns tokens when authorized
    */
   app.post('/api/auth/device/confirm', async (request: FastifyRequest, reply: FastifyReply) => {
     const parseResult = deviceConfirmRequestSchema.safeParse(request.body);
@@ -190,7 +110,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const { deviceCode } = parseResult.data;
-    const entry = deviceCodes.get(deviceCode);
+    const entry = getDeviceCode(deviceCode);
 
     if (!entry) {
       return reply.status(400).send({
@@ -199,16 +119,14 @@ export async function authRoutes(app: FastifyInstance) {
       });
     }
 
-    // Check if expired
     if (entry.expiresAt < new Date()) {
-      deviceCodes.delete(deviceCode);
+      consumeDeviceCode(deviceCode);
       return reply.status(400).send({
         error: 'expired_token',
         errorDescription: 'Device code has expired',
       });
     }
 
-    // Check if authorized
     if (!entry.authorized || !entry.userId || !entry.tokens) {
       return reply.status(400).send({
         error: 'authorization_pending',
@@ -216,33 +134,29 @@ export async function authRoutes(app: FastifyInstance) {
       });
     }
 
-    // Return tokens and cleanup
-    const { tokens, userId } = entry;
-    deviceCodes.delete(deviceCode);
-
-    // Cleanup user code mapping
-    for (const [userCode, dCode] of usersByCode.entries()) {
-      if (dCode === deviceCode) {
-        usersByCode.delete(userCode);
-      }
+    // Consume and cleanup
+    const authorizedEntry = consumeDeviceCode(deviceCode);
+    if (!authorizedEntry?.tokens) {
+      return reply.status(400).send({
+        error: 'invalid_grant',
+        errorDescription: 'Authorization failed',
+      });
     }
 
     // Get user info
-    const user = mockUsers.get(userId);
+    const user = await getUserById(authorizedEntry.userId!);
 
     return reply.status(200).send({
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      accessToken: authorizedEntry.tokens.accessToken,
+      refreshToken: authorizedEntry.tokens.refreshToken,
       tokenType: 'Bearer',
-      expiresIn: tokens.expiresIn,
-      user: user
-        ? {
-            id: user.id,
-            email: user.email,
-            displayName: user.displayName,
-            avatarUrl: user.avatarUrl,
-          }
-        : null,
+      expiresIn: authorizedEntry.tokens.expiresIn,
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+      } : null,
     });
   });
 
@@ -255,25 +169,17 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parseResult.success) {
       return reply.status(400).send({
         error: 'invalid_request',
-        errorDescription: 'Invalid user code',
+        errorDescription: 'Invalid user code format',
       });
     }
 
     const { userCode } = parseResult.data;
-    const deviceCode = usersByCode.get(userCode);
+    const entry = getDeviceCodeByUserCode(userCode);
 
-    if (!deviceCode) {
-      return reply.status(400).send({
-        error: 'invalid_grant',
-        errorDescription: 'Invalid or expired user code',
-      });
-    }
-
-    const entry = deviceCodes.get(deviceCode);
     if (!entry) {
       return reply.status(400).send({
         error: 'invalid_grant',
-        errorDescription: 'Device code not found',
+        errorDescription: 'Invalid or expired user code',
       });
     }
 
@@ -291,30 +197,51 @@ export async function authRoutes(app: FastifyInstance) {
       });
     }
 
-    // For demo purposes, use a mock user
-    // In production, would get userId from session/auth
-    const userId = 'test-user-1';
+    // Get authenticated user from access token
+    const authHeader = request.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({
+        error: 'unauthorized',
+        errorDescription: 'Authentication required',
+      });
+    }
 
-    // Generate tokens
-    const accessToken = generateAccessToken(userId);
-    const refreshToken = generateRefreshToken();
+    const accessToken = authHeader.slice(7);
+    const payload = await verifyAccessToken(app, accessToken);
 
-    // Store refresh token
-    refreshTokens.set(refreshToken, {
-      userId,
-      deviceId: deviceCode,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    if (!payload) {
+      return reply.status(401).send({
+        error: 'invalid_token',
+        errorDescription: 'Invalid or expired access token',
+      });
+    }
+
+    // Generate tokens for the device
+    const deviceInfo = {
+      deviceName: 'VS Code Extension',
+      deviceType: 'vscode',
+      ipAddress: getDeviceInfo(request).ipAddress,
+    };
+
+    const { accessToken: newAccessToken, refreshToken, expiresIn } = await generateTokenPair(
+      app,
+      payload.sub,
+      deviceInfo
+    );
+
+    // Authorize the device code
+    const authorized = authorizeDeviceCode(userCode, payload.sub, {
+      accessToken: newAccessToken,
+      refreshToken,
+      expiresIn,
     });
 
-    // Mark as authorized
-    entry.authorized = true;
-    entry.userId = userId;
-    entry.tokens = {
-      accessToken,
-      refreshToken,
-      expiresIn: 900, // 15 minutes
-    };
+    if (!authorized) {
+      return reply.status(400).send({
+        error: 'invalid_grant',
+        errorDescription: 'Failed to authorize device',
+      });
+    }
 
     return reply.status(200).send({
       success: true,
@@ -336,19 +263,12 @@ export async function authRoutes(app: FastifyInstance) {
       });
     }
 
-    const deviceCode = usersByCode.get(userCode);
-    if (!deviceCode) {
-      return reply.status(404).send({
-        error: 'not_found',
-        errorDescription: 'Invalid or expired user code',
-      });
-    }
+    const entry = getDeviceCodeByUserCode(userCode);
 
-    const entry = deviceCodes.get(deviceCode);
     if (!entry) {
       return reply.status(404).send({
         error: 'not_found',
-        errorDescription: 'Device code not found',
+        errorDescription: 'Invalid or expired user code',
       });
     }
 
@@ -368,9 +288,29 @@ export async function authRoutes(app: FastifyInstance) {
 
   /**
    * POST /api/auth/refresh
-   * Refresh access token using refresh token
+   * Refresh access token using refresh token (with rotation)
    */
   app.post('/api/auth/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
+    const deviceInfo = getDeviceInfo(request);
+    const rateLimitKey = `refresh:${deviceInfo.ipAddress || 'unknown'}`;
+
+    const { allowed, remaining, resetIn } = await checkRateLimit(
+      rateLimitKey,
+      AUTH_RATE_LIMIT.refresh.max,
+      AUTH_RATE_LIMIT.refresh.window
+    );
+
+    reply.header('X-RateLimit-Remaining', remaining);
+    reply.header('X-RateLimit-Reset', resetIn);
+
+    if (!allowed) {
+      return reply.status(429).send({
+        error: 'rate_limit_exceeded',
+        errorDescription: 'Too many refresh requests',
+        retryAfter: resetIn,
+      });
+    }
+
     const parseResult = refreshRequestSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send({
@@ -380,69 +320,93 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const { refreshToken } = parseResult.data;
-    const entry = refreshTokens.get(refreshToken);
+    const tokens = await refreshTokens(app, refreshToken, deviceInfo);
 
-    if (!entry) {
+    if (!tokens) {
       return reply.status(401).send({
         error: 'invalid_grant',
-        errorDescription: 'Invalid refresh token',
+        errorDescription: 'Invalid or expired refresh token',
       });
     }
-
-    if (entry.expiresAt < new Date()) {
-      refreshTokens.delete(refreshToken);
-      return reply.status(401).send({
-        error: 'invalid_grant',
-        errorDescription: 'Refresh token expired',
-      });
-    }
-
-    // Rotate refresh token (invalidate old one, create new one)
-    refreshTokens.delete(refreshToken);
-
-    const newAccessToken = generateAccessToken(entry.userId);
-    const newRefreshToken = generateRefreshToken();
-
-    refreshTokens.set(newRefreshToken, {
-      userId: entry.userId,
-      deviceId: entry.deviceId,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-    });
-
-    // Get user info
-    const user = mockUsers.get(entry.userId);
 
     return reply.status(200).send({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       tokenType: 'Bearer',
-      expiresIn: 900, // 15 minutes
-      user: user
-        ? {
-            id: user.id,
-            email: user.email,
-            displayName: user.displayName,
-            avatarUrl: user.avatarUrl,
-          }
-        : null,
+      expiresIn: tokens.expiresIn,
     });
   });
 
   /**
    * POST /api/auth/logout
-   * Logout and invalidate tokens
+   * Logout and invalidate current session
    */
   app.post('/api/auth/logout', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Try to get refresh token to revoke session
     const parseResult = refreshRequestSchema.safeParse(request.body);
-    if (parseResult.success) {
-      const { refreshToken } = parseResult.data;
-      refreshTokens.delete(refreshToken);
+
+    // Also try to blacklist access token if provided
+    const authHeader = request.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const accessToken = authHeader.slice(7);
+      const payload = await verifyAccessToken(app, accessToken);
+
+      if (payload?.sessionId) {
+        // Revoke the session
+        await revokeSession(payload.sessionId, payload.sub);
+
+        // Blacklist the access token for its remaining lifetime
+        const exp = payload.exp ?? 0;
+        const remainingSeconds = Math.max(0, exp - Math.floor(Date.now() / 1000));
+        if (remainingSeconds > 0) {
+          await blacklistAccessToken(accessToken, remainingSeconds);
+        }
+      }
     }
 
     return reply.status(200).send({
       success: true,
       message: 'Logged out successfully',
+    });
+  });
+
+  /**
+   * POST /api/auth/logout-all
+   * Logout from all devices
+   */
+  app.post('/api/auth/logout-all', async (request: FastifyRequest, reply: FastifyReply) => {
+    const authHeader = request.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({
+        error: 'unauthorized',
+        errorDescription: 'Access token required',
+      });
+    }
+
+    const accessToken = authHeader.slice(7);
+    const payload = await verifyAccessToken(app, accessToken);
+
+    if (!payload) {
+      return reply.status(401).send({
+        error: 'invalid_token',
+        errorDescription: 'Invalid or expired access token',
+      });
+    }
+
+    // Revoke all sessions
+    const count = await revokeAllSessions(payload.sub);
+
+    // Blacklist current access token
+    const exp = payload.exp ?? 0;
+    const remainingSeconds = Math.max(0, exp - Math.floor(Date.now() / 1000));
+    if (remainingSeconds > 0) {
+      await blacklistAccessToken(accessToken, remainingSeconds);
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: `Logged out from ${count} device(s)`,
+      sessionsRevoked: count,
     });
   });
 
@@ -453,7 +417,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/api/auth/me', async (request: FastifyRequest, reply: FastifyReply) => {
     const authHeader = request.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return reply.status(401).send({
         error: 'unauthorized',
         errorDescription: 'Access token required',
@@ -461,16 +425,16 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const token = authHeader.slice(7);
-    const result = validateAccessToken(token);
+    const payload = await verifyAccessToken(app, token);
 
-    if (!result.valid) {
+    if (!payload) {
       return reply.status(401).send({
-        error: result.expired ? 'token_expired' : 'invalid_token',
-        errorDescription: result.expired ? 'Access token expired' : 'Invalid access token',
+        error: 'invalid_token',
+        errorDescription: 'Invalid or expired access token',
       });
     }
 
-    const user = mockUsers.get(result.userId!);
+    const user = await getUserById(payload.sub);
 
     if (!user) {
       return reply.status(404).send({
@@ -484,6 +448,91 @@ export async function authRoutes(app: FastifyInstance) {
       email: user.email,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      roles: user.roles,
+      isVerified: user.isVerified,
+      createdAt: user.createdAt,
+    });
+  });
+
+  /**
+   * GET /api/auth/sessions
+   * Get all active sessions for current user
+   */
+  app.get('/api/auth/sessions', async (request: FastifyRequest, reply: FastifyReply) => {
+    const authHeader = request.headers.authorization;
+
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({
+        error: 'unauthorized',
+        errorDescription: 'Access token required',
+      });
+    }
+
+    const token = authHeader.slice(7);
+    const payload = await verifyAccessToken(app, token);
+
+    if (!payload) {
+      return reply.status(401).send({
+        error: 'invalid_token',
+        errorDescription: 'Invalid or expired access token',
+      });
+    }
+
+    const sessions = await getUserSessions(payload.sub, payload.sessionId);
+
+    return reply.status(200).send({
+      sessions,
+    });
+  });
+
+  /**
+   * DELETE /api/auth/sessions/:sessionId
+   * Revoke a specific session
+   */
+  app.delete('/api/auth/sessions/:sessionId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const authHeader = request.headers.authorization;
+
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({
+        error: 'unauthorized',
+        errorDescription: 'Access token required',
+      });
+    }
+
+    const token = authHeader.slice(7);
+    const payload = await verifyAccessToken(app, token);
+
+    if (!payload) {
+      return reply.status(401).send({
+        error: 'invalid_token',
+        errorDescription: 'Invalid or expired access token',
+      });
+    }
+
+    const { sessionId } = request.params as { sessionId: string };
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(sessionId)) {
+      return reply.status(400).send({
+        error: 'invalid_request',
+        errorDescription: 'Invalid session ID format',
+      });
+    }
+
+    // Only allow revoking own sessions
+    const revoked = await revokeSession(sessionId, payload.sub);
+
+    if (!revoked) {
+      return reply.status(404).send({
+        error: 'not_found',
+        errorDescription: 'Session not found',
+      });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Session revoked successfully',
     });
   });
 }

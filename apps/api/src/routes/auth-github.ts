@@ -1,87 +1,27 @@
+/**
+ * GitHub OAuth Routes
+ *
+ * Implements the Authorization Code flow for GitHub OAuth
+ * with proper database integration and session management.
+ */
+
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import crypto from 'crypto';
+import { eq } from 'drizzle-orm';
+import { db } from '../db';
+import { users, oauthAccounts } from '../db/schema';
 import { env } from '../lib/env';
+import {
+  generateTokenPair,
+  verifyAccessToken,
+  getDeviceInfo,
+  getRedis,
+} from '../lib/session';
 
-/**
- * GitHub OAuth endpoints
- * Implements the Authorization Code flow for GitHub OAuth
- */
-
-// OAuth state store (would use Redis in production)
-interface OAuthStateEntry {
-  state: string;
-  redirectUrl: string;
-  linkToUserId?: string; // For account linking
-  createdAt: Date;
-  expiresAt: Date;
-}
-
-const oauthStates: Map<string, OAuthStateEntry> = new Map();
-
-// Session store for authenticated users (would use Redis/sessions in production)
-interface SessionEntry {
-  userId: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: Date;
-  createdAt: Date;
-}
-
-const sessions: Map<string, SessionEntry> = new Map();
-
-// Mock user database (would be real DB in production)
-interface MockUser {
-  id: string;
-  email: string;
-  displayName: string;
-  avatarUrl?: string;
-  githubId?: string;
-  githubUsername?: string;
-}
-
-const mockUsers = new Map<string, MockUser>();
-const usersByGithubId = new Map<string, string>(); // githubId -> userId
-
-// Helper to generate secure random strings
-function generateSecureString(length: number = 32): string {
-  return crypto.randomBytes(length).toString('hex');
-}
-
-// Generate JWT-like access token (simplified for demo)
-function generateAccessToken(userId: string): string {
-  const payload = {
-    sub: userId,
-    iat: Date.now(),
-    exp: Date.now() + 15 * 60 * 1000, // 15 minutes
-    type: 'access',
-  };
-  return Buffer.from(JSON.stringify(payload)).toString('base64');
-}
-
-function generateRefreshToken(): string {
-  return generateSecureString(64);
-}
-
-// Cleanup expired entries
-function cleanupExpiredEntries() {
-  const now = new Date();
-
-  for (const [state, entry] of oauthStates.entries()) {
-    if (entry.expiresAt < now) {
-      oauthStates.delete(state);
-    }
-  }
-
-  for (const [token, entry] of sessions.entries()) {
-    if (entry.expiresAt < now) {
-      sessions.delete(token);
-    }
-  }
-}
-
-// Run cleanup every minute
-setInterval(cleanupExpiredEntries, 60 * 1000);
+// Redis key prefix for OAuth state
+const OAUTH_STATE_PREFIX = 'oauth:state:';
+const STATE_EXPIRY_SECONDS = 600; // 10 minutes
 
 // GitHub API types
 interface GitHubUser {
@@ -106,17 +46,47 @@ interface GitHubTokenResponse {
   refresh_token?: string;
   expires_in?: number;
   refresh_token_expires_in?: number;
+  error?: string;
+  error_description?: string;
 }
 
-// Schemas
-const callbackQuerySchema = z.object({
-  code: z.string(),
-  state: z.string(),
-});
+interface OAuthState {
+  redirectUrl: string;
+  linkToUserId?: string;
+}
 
-const linkRequestSchema = z.object({
-  redirectUrl: z.string().optional(),
-});
+// Helper to generate secure random strings
+function generateSecureString(length: number = 32): string {
+  return crypto.randomBytes(length).toString('hex');
+}
+
+// Store OAuth state in Redis
+async function storeOAuthState(state: string, data: OAuthState): Promise<void> {
+  const redis = getRedis();
+  await redis.setex(
+    `${OAUTH_STATE_PREFIX}${state}`,
+    STATE_EXPIRY_SECONDS,
+    JSON.stringify(data)
+  );
+}
+
+// Retrieve and delete OAuth state from Redis
+async function consumeOAuthState(state: string): Promise<OAuthState | null> {
+  const redis = getRedis();
+  const key = `${OAUTH_STATE_PREFIX}${state}`;
+  const data = await redis.get(key);
+
+  if (!data) return null;
+
+  // Delete after retrieval (one-time use)
+  await redis.del(key);
+
+  try {
+    return JSON.parse(data) as OAuthState;
+  } catch {
+    return null;
+  }
+}
 
 export async function authGitHubRoutes(app: FastifyInstance) {
   /**
@@ -138,13 +108,10 @@ export async function authGitHubRoutes(app: FastifyInstance) {
     const state = generateSecureString(32);
     const redirectUrl = query.redirect || `${env.WEB_URL}/`;
 
-    // Store state
-    oauthStates.set(state, {
-      state,
+    // Store state in Redis
+    await storeOAuthState(state, {
       redirectUrl,
-      linkToUserId: query.link, // If linking to existing account
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+      linkToUserId: query.link,
     });
 
     // Build GitHub authorization URL
@@ -179,14 +146,11 @@ export async function authGitHubRoutes(app: FastifyInstance) {
       return reply.redirect(`${env.WEB_URL}/login?error=invalid_request&error_description=Missing+code+or+state`);
     }
 
-    // Validate state
-    const stateEntry = oauthStates.get(query.state);
-    if (!stateEntry) {
+    // Validate and consume state
+    const stateData = await consumeOAuthState(query.state);
+    if (!stateData) {
       return reply.redirect(`${env.WEB_URL}/login?error=invalid_state&error_description=Invalid+or+expired+state`);
     }
-
-    // Remove state (one-time use)
-    oauthStates.delete(query.state);
 
     // Check if GitHub OAuth is configured
     if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
@@ -213,7 +177,7 @@ export async function authGitHubRoutes(app: FastifyInstance) {
         throw new Error('Failed to exchange code for token');
       }
 
-      const tokenData = (await tokenResponse.json()) as GitHubTokenResponse & { error?: string; error_description?: string };
+      const tokenData = (await tokenResponse.json()) as GitHubTokenResponse;
 
       if (tokenData.error) {
         throw new Error(tokenData.error_description || tokenData.error);
@@ -258,63 +222,122 @@ export async function authGitHubRoutes(app: FastifyInstance) {
         return reply.redirect(`${env.WEB_URL}/login?error=no_email&error_description=Unable+to+get+email+from+GitHub`);
       }
 
-      // Check if user exists with this GitHub ID
-      let userId = usersByGithubId.get(String(githubUser.id));
-      let user: MockUser;
+      // Check if OAuth account exists
+      const [existingOAuth] = await db
+        .select()
+        .from(oauthAccounts)
+        .where(eq(oauthAccounts.providerUserId, String(githubUser.id)))
+        .limit(1);
 
-      if (userId) {
-        // Existing user - update info
-        user = mockUsers.get(userId)!;
-        user.displayName = githubUser.name || githubUser.login;
-        user.avatarUrl = githubUser.avatar_url;
-        user.githubUsername = githubUser.login;
-      } else if (stateEntry.linkToUserId) {
+      let userId: string;
+
+      if (existingOAuth) {
+        // Existing OAuth connection - use that user
+        userId = existingOAuth.userId;
+
+        // Update user info
+        await db
+          .update(users)
+          .set({
+            displayName: githubUser.name || githubUser.login,
+            avatarUrl: githubUser.avatar_url,
+            lastLoginAt: new Date(),
+          })
+          .where(eq(users.id, userId));
+      } else if (stateData.linkToUserId) {
         // Linking to existing account
-        user = mockUsers.get(stateEntry.linkToUserId)!;
-        if (!user) {
+        const [existingUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, stateData.linkToUserId))
+          .limit(1);
+
+        if (!existingUser) {
           return reply.redirect(`${env.WEB_URL}/login?error=user_not_found`);
         }
-        user.githubId = String(githubUser.id);
-        user.githubUsername = githubUser.login;
-        usersByGithubId.set(String(githubUser.id), user.id);
-        userId = user.id;
+
+        // Create OAuth account link
+        await db.insert(oauthAccounts).values({
+          userId: existingUser.id,
+          provider: 'github',
+          providerUserId: String(githubUser.id),
+          scopes: ['read:user', 'user:email'],
+        });
+
+        userId = existingUser.id;
       } else {
-        // New user - create account
-        userId = `github-${githubUser.id}`;
-        user = {
-          id: userId,
-          email,
-          displayName: githubUser.name || githubUser.login,
-          avatarUrl: githubUser.avatar_url,
-          githubId: String(githubUser.id),
-          githubUsername: githubUser.login,
-        };
-        mockUsers.set(userId, user);
-        usersByGithubId.set(String(githubUser.id), userId);
+        // Check if user exists with this email
+        const [existingUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+
+        if (existingUser) {
+          // Link GitHub to existing account
+          await db.insert(oauthAccounts).values({
+            userId: existingUser.id,
+            provider: 'github',
+            providerUserId: String(githubUser.id),
+            scopes: ['read:user', 'user:email'],
+          });
+
+          // Update last login
+          await db
+            .update(users)
+            .set({
+              lastLoginAt: new Date(),
+              avatarUrl: existingUser.avatarUrl || githubUser.avatar_url,
+            })
+            .where(eq(users.id, existingUser.id));
+
+          userId = existingUser.id;
+        } else {
+          // Create new user
+          const [newUser] = await db
+            .insert(users)
+            .values({
+              email,
+              displayName: githubUser.name || githubUser.login,
+              avatarUrl: githubUser.avatar_url,
+              isVerified: true, // Email verified via GitHub
+              lastLoginAt: new Date(),
+            })
+            .returning();
+
+          // Create OAuth account link
+          await db.insert(oauthAccounts).values({
+            userId: newUser.id,
+            provider: 'github',
+            providerUserId: String(githubUser.id),
+            scopes: ['read:user', 'user:email'],
+          });
+
+          userId = newUser.id;
+        }
       }
 
-      // Generate our tokens
-      const accessToken = generateAccessToken(userId);
-      const refreshToken = generateRefreshToken();
+      // Generate tokens using proper session management
+      const deviceInfo = {
+        deviceName: 'Web Browser',
+        ...getDeviceInfo(request),
+      };
 
-      // Store session
-      sessions.set(refreshToken, {
+      const { accessToken, refreshToken, expiresIn } = await generateTokenPair(
+        app,
         userId,
-        accessToken,
-        refreshToken,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        createdAt: new Date(),
-      });
+        deviceInfo
+      );
 
       // Redirect back to web app with tokens
       const params = new URLSearchParams({
         access_token: accessToken,
         refresh_token: refreshToken,
-        expires_in: '900', // 15 minutes
+        expires_in: String(expiresIn),
         token_type: 'Bearer',
       });
 
-      return reply.redirect(`${stateEntry.redirectUrl}?auth=success&${params.toString()}`);
+      return reply.redirect(`${stateData.redirectUrl}?auth=success&${params.toString()}`);
     } catch (error) {
       console.error('GitHub OAuth error:', error);
       const message = error instanceof Error ? error.message : 'OAuth failed';
@@ -327,12 +350,21 @@ export async function authGitHubRoutes(app: FastifyInstance) {
    * Link GitHub account to existing user (requires auth)
    */
   app.post('/api/auth/github/link', async (request: FastifyRequest, reply: FastifyReply) => {
-    // In production, would verify auth token and get user ID
     const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return reply.status(401).send({
         error: 'unauthorized',
         errorDescription: 'Access token required',
+      });
+    }
+
+    const accessToken = authHeader.slice(7);
+    const payload = await verifyAccessToken(app, accessToken);
+
+    if (!payload) {
+      return reply.status(401).send({
+        error: 'invalid_token',
+        errorDescription: 'Invalid or expired access token',
       });
     }
 
@@ -344,22 +376,30 @@ export async function authGitHubRoutes(app: FastifyInstance) {
       });
     }
 
+    // Check if user already has GitHub linked
+    const [existingOAuth] = await db
+      .select()
+      .from(oauthAccounts)
+      .where(eq(oauthAccounts.userId, payload.sub))
+      .limit(1);
+
+    if (existingOAuth) {
+      return reply.status(400).send({
+        error: 'already_linked',
+        errorDescription: 'GitHub account already linked',
+      });
+    }
+
     const body = request.body as { redirectUrl?: string };
     const redirectUrl = body.redirectUrl || `${env.WEB_URL}/settings`;
-
-    // In production, would extract user ID from token
-    const userId = 'current-user-id'; // Placeholder
 
     // Generate state for CSRF protection
     const state = generateSecureString(32);
 
     // Store state with link flag
-    oauthStates.set(state, {
-      state,
+    await storeOAuthState(state, {
       redirectUrl,
-      linkToUserId: userId,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      linkToUserId: payload.sub,
     });
 
     // Build authorization URL
@@ -380,19 +420,35 @@ export async function authGitHubRoutes(app: FastifyInstance) {
    * Unlink GitHub account from user (requires auth)
    */
   app.delete('/api/auth/github/unlink', async (request: FastifyRequest, reply: FastifyReply) => {
-    // In production, would verify auth token and get user ID
     const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return reply.status(401).send({
         error: 'unauthorized',
         errorDescription: 'Access token required',
       });
     }
 
-    // Placeholder - in production would:
-    // 1. Get user from token
-    // 2. Remove GitHub link from user record
-    // 3. Remove from usersByGithubId map
+    const accessToken = authHeader.slice(7);
+    const payload = await verifyAccessToken(app, accessToken);
+
+    if (!payload) {
+      return reply.status(401).send({
+        error: 'invalid_token',
+        errorDescription: 'Invalid or expired access token',
+      });
+    }
+
+    // Find and delete OAuth link
+    const result = await db
+      .delete(oauthAccounts)
+      .where(eq(oauthAccounts.userId, payload.sub));
+
+    if ((result.rowCount ?? 0) === 0) {
+      return reply.status(404).send({
+        error: 'not_found',
+        errorDescription: 'No GitHub account linked',
+      });
+    }
 
     return reply.status(200).send({
       success: true,
@@ -409,20 +465,34 @@ export async function authGitHubRoutes(app: FastifyInstance) {
 
     const isConfigured = !!(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return reply.status(200).send({
         configured: isConfigured,
         linked: false,
       });
     }
 
-    // In production, would check if user has GitHub linked
-    // For now, return placeholder
+    const accessToken = authHeader.slice(7);
+    const payload = await verifyAccessToken(app, accessToken);
+
+    if (!payload) {
+      return reply.status(200).send({
+        configured: isConfigured,
+        linked: false,
+      });
+    }
+
+    // Check if user has GitHub linked
+    const [oauthAccount] = await db
+      .select()
+      .from(oauthAccounts)
+      .where(eq(oauthAccounts.userId, payload.sub))
+      .limit(1);
 
     return reply.status(200).send({
       configured: isConfigured,
-      linked: false,
-      scopes: ['read:user', 'user:email'],
+      linked: !!oauthAccount,
+      scopes: oauthAccount?.scopes || [],
     });
   });
 }

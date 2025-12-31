@@ -11,9 +11,11 @@ import { cleanupAllConnections } from './lib/match-events';
 import {
   registerCors,
   registerErrorHandler,
+  registerJwt,
   registerRequestId,
   registerRateLimit,
 } from './plugins';
+import { closeRedis } from './lib/session';
 import { registerRoutes } from './routes';
 
 const PORT = parseInt(env.PORT, 10);
@@ -32,6 +34,7 @@ async function buildApp() {
   await registerRequestId(app);
   await registerCors(app);
   await registerRateLimit(app);
+  await registerJwt(app);
   await registerErrorHandler(app);
 
   // Register routes
@@ -54,6 +57,7 @@ async function start() {
         // Cleanup WebSocket/SSE connections
         cleanupAllConnections();
         await app.close();
+        await closeRedis();
         await closeDatabaseConnection();
         logger.info('Server closed successfully');
         process.exit(0);
