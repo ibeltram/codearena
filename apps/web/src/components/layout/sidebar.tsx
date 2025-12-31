@@ -12,6 +12,7 @@ import {
   BarChart3,
   ChevronLeft,
   Shield,
+  Medal,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -25,7 +26,7 @@ const mainNavItems = [
   { href: '/matches', label: 'Matches', icon: Swords },
   { href: '/ranked', label: 'Ranked', icon: BarChart3 },
   { href: '/tournaments', label: 'Tournaments', icon: Trophy },
-  { href: '/leaderboard', label: 'Leaderboard', icon: BarChart3 },
+  { href: '/leaderboard', label: 'Leaderboard', icon: Medal },
 ];
 
 const userNavItems = [

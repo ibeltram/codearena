@@ -1,5 +1,10 @@
 export { useChallenges } from './use-challenges';
 export {
+  useLeaderboard,
+  useSeasons,
+  leaderboardKeys,
+} from './use-leaderboard';
+export {
   useMatch,
   useMatches,
   useMyMatches,
