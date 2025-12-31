@@ -27,7 +27,7 @@ export function useLeaderboard(filters: LeaderboardFilters = {}) {
   if (filters.search) queryParams.set('search', filters.search);
 
   const queryString = queryParams.toString();
-  const endpoint = `/api/leaderboard${queryString ? `?${queryString}` : ''}`;
+  const endpoint = `/api/ratings/leaderboard${queryString ? `?${queryString}` : ''}`;
 
   return useQuery({
     queryKey: leaderboardKeys.list(filters),
@@ -41,7 +41,7 @@ export function useLeaderboard(filters: LeaderboardFilters = {}) {
 export function useSeasons() {
   return useQuery({
     queryKey: leaderboardKeys.seasons(),
-    queryFn: () => api.get<SeasonsResponse>('/api/seasons'),
+    queryFn: () => api.get<SeasonsResponse>('/api/ratings/seasons'),
     staleTime: 5 * 60 * 1000, // 5 minutes
     select: (data) => data.data,
   });

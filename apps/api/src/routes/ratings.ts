@@ -20,9 +20,10 @@ import { getConfidenceInterval, getRatingTier } from '../lib/glicko2';
 // Request schemas
 const leaderboardQuerySchema = z.object({
   seasonId: z.string().uuid().optional(),
-  limit: z.coerce.number().min(1).max(100).default(50),
-  offset: z.coerce.number().min(0).default(0),
+  limit: z.coerce.number().min(1).max(100).default(25),
+  page: z.coerce.number().min(1).default(1),
   category: z.string().optional(),
+  search: z.string().optional(),
 });
 
 const historyQuerySchema = z.object({
@@ -113,29 +114,49 @@ export default async function ratingsRoutes(fastify: FastifyInstance) {
     handler: async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const query = leaderboardQuerySchema.parse(request.query);
+        const offset = (query.page - 1) * query.limit;
 
         const leaderboard = await getLeaderboard({
           seasonId: query.seasonId,
           limit: query.limit,
-          offset: query.offset,
+          offset,
           category: query.category,
         });
 
         const season = await getCurrentSeason();
 
+        // Get total count for pagination (simplified - in production would query separately)
+        const totalEstimate = leaderboard.length < query.limit ? offset + leaderboard.length : offset + query.limit + 1;
+        const total = Math.max(totalEstimate, leaderboard.length);
+        const totalPages = Math.ceil(total / query.limit);
+
         return reply.send({
           season: {
             id: season.id,
             name: season.name,
-            startsAt: season.startAt,
-            endsAt: season.endAt,
+            startDate: season.startAt.toISOString(),
+            endDate: season.endAt?.toISOString() || null,
+            isCurrent: true,
           },
           pagination: {
+            page: query.page,
             limit: query.limit,
-            offset: query.offset,
-            total: leaderboard.length, // Would need count query for actual total
+            total,
+            totalPages,
           },
-          entries: leaderboard,
+          data: leaderboard.map((entry, index) => ({
+            ...entry,
+            rank: offset + index + 1,
+            previousRank: null,
+            ratingChange: 0,
+            wins: entry.wins || 0,
+            losses: entry.losses || 0,
+            draws: entry.draws || 0,
+            winRate: entry.wins && (entry.wins + entry.losses) > 0
+              ? Math.round((entry.wins / (entry.wins + entry.losses)) * 100)
+              : 0,
+            isCurrentUser: false,
+          })),
         });
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -310,18 +331,13 @@ export default async function ratingsRoutes(fastify: FastifyInstance) {
 
         const current = await getCurrentSeason();
 
+        // Return in format expected by frontend (data array)
         return reply.send({
-          current: {
-            id: current.id,
-            name: current.name,
-            startsAt: current.startAt,
-            endsAt: current.endAt,
-          },
-          seasons: allSeasons.map((s) => ({
+          data: allSeasons.map((s) => ({
             id: s.id,
             name: s.name,
-            startsAt: s.startAt,
-            endsAt: s.endAt,
+            startDate: s.startAt.toISOString(),
+            endDate: s.endAt?.toISOString() || null,
             isCurrent: s.id === current.id,
           })),
         });
