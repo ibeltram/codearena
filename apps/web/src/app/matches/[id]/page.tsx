@@ -33,8 +33,9 @@ import {
   ConnectionStatusIndicator,
   LiveBadge,
   JudgingResults,
+  JudgingLogs,
 } from '@/components/matches';
-import { useMatch, useReadyUp, useForfeit, useMatchEvents, useMatchResults } from '@/hooks';
+import { useMatch, useReadyUp, useForfeit, useMatchEvents, useMatchResults, useJudgementLogs, useJudgementLogsUrl } from '@/hooks';
 import { categoryLabels, categoryColors, difficultyLabels, difficultyColors } from '@/types/challenge';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store';
@@ -57,6 +58,18 @@ export default function MatchDetailPage() {
   const { data: matchResults, isLoading: resultsLoading } = useMatchResults(
     shouldFetchResults ? matchId : undefined
   );
+
+  // Fetch judgement logs when results are available
+  const logsKey = matchResults?.judgementRun?.logsKey;
+  const { data: logsContent, isLoading: logsLoading } = useJudgementLogs(logsKey);
+  const { data: logsUrlData } = useJudgementLogsUrl(logsKey);
+
+  // Handle logs download
+  const handleDownloadLogs = () => {
+    if (logsUrlData?.downloadUrl) {
+      window.open(logsUrlData.downloadUrl, '_blank');
+    }
+  };
 
   // SSE real-time events - keep track of live timer from server
   const [liveTimerRemaining, setLiveTimerRemaining] = useState<number | null>(null);
@@ -307,6 +320,16 @@ export default function MatchDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Judging Logs - collapsible log viewer */}
+            {matchResults?.judgementRun && (
+              <JudgingLogs
+                judgementRun={matchResults.judgementRun}
+                logsContent={logsContent}
+                isLoading={logsLoading}
+                onDownload={handleDownloadLogs}
+              />
+            )}
           </div>
         )}
 

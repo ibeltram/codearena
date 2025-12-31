@@ -262,3 +262,45 @@ export function useMatchResults(matchId: string | undefined) {
     staleTime: 60 * 1000, // 1 minute - results don't change often
   });
 }
+
+// Judgement logs types
+interface JudgementLogsDownloadUrl {
+  downloadUrl: string;
+  expiresIn: number;
+}
+
+// Fetch judgement run logs download URL
+export function useJudgementLogsUrl(logsKey: string | null | undefined) {
+  return useQuery({
+    queryKey: ['judgement-logs-url', logsKey],
+    queryFn: () =>
+      api.get<JudgementLogsDownloadUrl>(
+        `/api/storage/download-url?key=${encodeURIComponent(logsKey!)}&bucket=logs`
+      ),
+    enabled: !!logsKey,
+    staleTime: 30 * 60 * 1000, // 30 minutes - URLs are valid for 1 hour
+  });
+}
+
+// Fetch actual logs content
+export function useJudgementLogs(logsKey: string | null | undefined) {
+  // First get the download URL
+  const { data: urlData } = useJudgementLogsUrl(logsKey);
+
+  // Then fetch the actual content
+  return useQuery({
+    queryKey: ['judgement-logs-content', logsKey],
+    queryFn: async () => {
+      if (!urlData?.downloadUrl) {
+        throw new Error('No download URL available');
+      }
+      const response = await fetch(urlData.downloadUrl);
+      if (!response.ok) {
+        throw new Error('Failed to fetch logs');
+      }
+      return response.text();
+    },
+    enabled: !!urlData?.downloadUrl,
+    staleTime: 60 * 60 * 1000, // 1 hour - logs don't change
+  });
+}

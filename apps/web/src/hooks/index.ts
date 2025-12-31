@@ -21,6 +21,8 @@ export {
   useReadyUp,
   useForfeit,
   useMatchResults,
+  useJudgementLogsUrl,
+  useJudgementLogs,
   type MatchResults,
   type ParticipantWithScore,
   type ParticipantScore,
