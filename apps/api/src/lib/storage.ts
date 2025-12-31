@@ -713,8 +713,496 @@ export async function uploadObject(
   return storageClient.upload(bucket, key, data, options);
 }
 
+// ============================================================================
+// Multipart Upload Support
+// ============================================================================
+
+export interface MultipartUploadInit {
+  uploadId: string;
+  key: string;
+  bucket: BucketName;
+}
+
+export interface MultipartPart {
+  partNumber: number;
+  etag: string;
+}
+
+export interface PresignedPartUrl {
+  partNumber: number;
+  url: string;
+}
+
+/**
+ * Multipart upload client for S3-compatible storage
+ * Implements the S3 multipart upload API for resumable uploads
+ */
+class MultipartUploadClient {
+  private config: StorageConfig;
+
+  constructor() {
+    this.config = getStorageConfig();
+  }
+
+  /**
+   * Build full URL for S3 request with optional query string
+   */
+  private buildUrl(bucket: string, key?: string, query?: URLSearchParams): string {
+    const endpointUrl = new URL(this.config.endpoint);
+
+    let path: string;
+    if (this.config.forcePathStyle) {
+      path = key ? `/${bucket}/${encodeURIComponent(key)}` : `/${bucket}`;
+    } else {
+      path = key ? `/${encodeURIComponent(key)}` : '/';
+    }
+
+    const baseUrl = this.config.forcePathStyle
+      ? `${endpointUrl.origin}${path}`
+      : `${endpointUrl.protocol}//${bucket}.${endpointUrl.host}${path}`;
+
+    if (query && query.toString()) {
+      return `${baseUrl}?${query.toString()}`;
+    }
+    return baseUrl;
+  }
+
+  /**
+   * Generate AWS Signature Version 4 for request with query string
+   */
+  private signRequest(
+    method: string,
+    bucket: string,
+    key: string,
+    headers: Record<string, string>,
+    query: URLSearchParams = new URLSearchParams(),
+    payload: Buffer | string = ''
+  ): Record<string, string> {
+    const date = new Date();
+    const dateStr = date.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
+    const timeStr = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+
+    const endpointUrl = new URL(this.config.endpoint);
+    const actualHost = this.config.forcePathStyle ? endpointUrl.host : `${bucket}.${endpointUrl.host}`;
+    const actualPath = this.config.forcePathStyle ? `/${bucket}/${encodeURIComponent(key)}` : `/${encodeURIComponent(key)}`;
+
+    // Payload hash
+    const payloadHash = crypto
+      .createHash('sha256')
+      .update(payload)
+      .digest('hex');
+
+    // Canonical headers
+    const signedHeaders: Record<string, string> = {
+      host: actualHost,
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': timeStr,
+      ...headers,
+    };
+
+    const sortedHeaderKeys = Object.keys(signedHeaders).sort();
+    const canonicalHeaders = sortedHeaderKeys
+      .map((k) => `${k.toLowerCase()}:${signedHeaders[k]}\n`)
+      .join('');
+    const signedHeadersList = sortedHeaderKeys.map((k) => k.toLowerCase()).join(';');
+
+    // Sort query parameters for canonical request
+    const sortedQuery = new URLSearchParams([...query.entries()].sort());
+    const canonicalQueryString = sortedQuery.toString();
+
+    // Canonical request
+    const canonicalRequest = [
+      method,
+      actualPath,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeadersList,
+      payloadHash,
+    ].join('\n');
+
+    const canonicalRequestHash = crypto
+      .createHash('sha256')
+      .update(canonicalRequest)
+      .digest('hex');
+
+    // String to sign
+    const credentialScope = `${dateStr}/${this.config.region}/s3/aws4_request`;
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      timeStr,
+      credentialScope,
+      canonicalRequestHash,
+    ].join('\n');
+
+    // Signing key
+    const kDate = crypto
+      .createHmac('sha256', `AWS4${this.config.secretAccessKey}`)
+      .update(dateStr)
+      .digest();
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.config.region).digest();
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest();
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
+
+    // Signature
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+
+    // Authorization header
+    const authorization = `AWS4-HMAC-SHA256 Credential=${this.config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeadersList}, Signature=${signature}`;
+
+    return {
+      ...signedHeaders,
+      Authorization: authorization,
+    };
+  }
+
+  /**
+   * Initiate a multipart upload
+   * Returns an uploadId that must be used for all subsequent part uploads
+   */
+  async initiateMultipartUpload(
+    bucket: BucketName,
+    key: string,
+    contentType: string = 'application/octet-stream'
+  ): Promise<MultipartUploadInit> {
+    const query = new URLSearchParams({ uploads: '' });
+
+    const headers: Record<string, string> = {
+      'content-type': contentType,
+    };
+
+    const signedHeaders = this.signRequest('POST', bucket, key, headers, query);
+    const url = this.buildUrl(bucket, key, query);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: signedHeaders,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Failed to initiate multipart upload: ${response.status} ${text}`);
+    }
+
+    const xmlText = await response.text();
+
+    // Parse XML response to get UploadId
+    // Response format:
+    // <?xml version="1.0" encoding="UTF-8"?>
+    // <InitiateMultipartUploadResult>
+    //   <Bucket>bucket-name</Bucket>
+    //   <Key>object-key</Key>
+    //   <UploadId>upload-id</UploadId>
+    // </InitiateMultipartUploadResult>
+
+    const uploadIdMatch = xmlText.match(/<UploadId>([^<]+)<\/UploadId>/);
+    if (!uploadIdMatch) {
+      throw new Error('Failed to parse upload ID from S3 response');
+    }
+
+    return {
+      uploadId: uploadIdMatch[1],
+      key,
+      bucket,
+    };
+  }
+
+  /**
+   * Generate a presigned URL for uploading a single part
+   * The client can PUT directly to this URL with the part data
+   */
+  generatePresignedPartUrl(
+    bucket: BucketName,
+    key: string,
+    uploadId: string,
+    partNumber: number,
+    expiresIn: number = 3600
+  ): string {
+    const date = new Date();
+    const dateStr = date.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
+    const timeStr = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+
+    const endpointUrl = new URL(this.config.endpoint);
+    const host = this.config.forcePathStyle ? endpointUrl.host : `${bucket}.${endpointUrl.host}`;
+    const path = this.config.forcePathStyle ? `/${bucket}/${encodeURIComponent(key)}` : `/${encodeURIComponent(key)}`;
+
+    const credentialScope = `${dateStr}/${this.config.region}/s3/aws4_request`;
+    const credential = `${this.config.accessKeyId}/${credentialScope}`;
+
+    // Query parameters - must include partNumber and uploadId for multipart
+    const queryParams = new URLSearchParams({
+      partNumber: String(partNumber),
+      uploadId: uploadId,
+      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+      'X-Amz-Credential': credential,
+      'X-Amz-Date': timeStr,
+      'X-Amz-Expires': String(expiresIn),
+      'X-Amz-SignedHeaders': 'host',
+    });
+
+    // Sort parameters for canonical request
+    const sortedParams = new URLSearchParams([...queryParams.entries()].sort());
+
+    // Canonical request for presigned PUT
+    const canonicalHeaders = `host:${host}\n`;
+    const canonicalRequest = [
+      'PUT',
+      path,
+      sortedParams.toString(),
+      canonicalHeaders,
+      'host',
+      'UNSIGNED-PAYLOAD',
+    ].join('\n');
+
+    const canonicalRequestHash = crypto
+      .createHash('sha256')
+      .update(canonicalRequest)
+      .digest('hex');
+
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      timeStr,
+      credentialScope,
+      canonicalRequestHash,
+    ].join('\n');
+
+    const kDate = crypto
+      .createHmac('sha256', `AWS4${this.config.secretAccessKey}`)
+      .update(dateStr)
+      .digest();
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.config.region).digest();
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest();
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
+
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+
+    sortedParams.set('X-Amz-Signature', signature);
+
+    const baseUrl = this.config.forcePathStyle
+      ? `${endpointUrl.origin}${path}`
+      : `${endpointUrl.protocol}//${bucket}.${endpointUrl.host}${path}`;
+
+    return `${baseUrl}?${sortedParams.toString()}`;
+  }
+
+  /**
+   * Generate presigned URLs for all parts of a multipart upload
+   */
+  generatePresignedPartUrls(
+    bucket: BucketName,
+    key: string,
+    uploadId: string,
+    partCount: number,
+    expiresIn: number = 3600
+  ): PresignedPartUrl[] {
+    return Array.from({ length: partCount }, (_, i) => ({
+      partNumber: i + 1,
+      url: this.generatePresignedPartUrl(bucket, key, uploadId, i + 1, expiresIn),
+    }));
+  }
+
+  /**
+   * Complete a multipart upload by providing the list of uploaded parts
+   * Each part must include its ETag (returned from S3 when the part was uploaded)
+   */
+  async completeMultipartUpload(
+    bucket: BucketName,
+    key: string,
+    uploadId: string,
+    parts: MultipartPart[]
+  ): Promise<{ etag: string; location: string }> {
+    const query = new URLSearchParams({ uploadId });
+
+    // Build the CompleteMultipartUpload XML body
+    const sortedParts = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+    const partsXml = sortedParts
+      .map(
+        (p) => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${p.etag}</ETag></Part>`
+      )
+      .join('');
+    const body = `<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUpload>${partsXml}</CompleteMultipartUpload>`;
+
+    const headers: Record<string, string> = {
+      'content-type': 'application/xml',
+    };
+
+    const signedHeaders = this.signRequest('POST', bucket, key, headers, query, body);
+    const url = this.buildUrl(bucket, key, query);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: signedHeaders,
+      body,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Failed to complete multipart upload: ${response.status} ${text}`);
+    }
+
+    const xmlText = await response.text();
+
+    // Parse response for ETag and Location
+    const etagMatch = xmlText.match(/<ETag>([^<]+)<\/ETag>/);
+    const locationMatch = xmlText.match(/<Location>([^<]+)<\/Location>/);
+
+    return {
+      etag: etagMatch ? etagMatch[1].replace(/"/g, '') : '',
+      location: locationMatch ? locationMatch[1] : '',
+    };
+  }
+
+  /**
+   * Abort a multipart upload
+   * This cleans up any uploaded parts and frees storage
+   */
+  async abortMultipartUpload(
+    bucket: BucketName,
+    key: string,
+    uploadId: string
+  ): Promise<void> {
+    const query = new URLSearchParams({ uploadId });
+
+    const signedHeaders = this.signRequest('DELETE', bucket, key, {}, query);
+    const url = this.buildUrl(bucket, key, query);
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: signedHeaders,
+    });
+
+    if (!response.ok && response.status !== 204) {
+      const text = await response.text();
+      throw new Error(`Failed to abort multipart upload: ${response.status} ${text}`);
+    }
+  }
+
+  /**
+   * List parts that have been uploaded for a multipart upload
+   * Useful for resuming interrupted uploads
+   */
+  async listParts(
+    bucket: BucketName,
+    key: string,
+    uploadId: string
+  ): Promise<MultipartPart[]> {
+    const query = new URLSearchParams({ uploadId });
+
+    const signedHeaders = this.signRequest('GET', bucket, key, {}, query);
+    const url = this.buildUrl(bucket, key, query);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: signedHeaders,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Failed to list parts: ${response.status} ${text}`);
+    }
+
+    const xmlText = await response.text();
+
+    // Parse response for parts
+    // Response format:
+    // <ListPartsResult>
+    //   <Part>
+    //     <PartNumber>1</PartNumber>
+    //     <ETag>"etag"</ETag>
+    //     <Size>5242880</Size>
+    //   </Part>
+    //   ...
+    // </ListPartsResult>
+
+    const parts: MultipartPart[] = [];
+    const partRegex = /<Part>\s*<PartNumber>(\d+)<\/PartNumber>\s*<[^>]+>[^<]*<\/[^>]+>\s*<ETag>([^<]+)<\/ETag>/g;
+    let match;
+
+    while ((match = partRegex.exec(xmlText)) !== null) {
+      parts.push({
+        partNumber: parseInt(match[1], 10),
+        etag: match[2].replace(/"/g, ''),
+      });
+    }
+
+    return parts;
+  }
+}
+
+// Singleton instance for multipart uploads
+const multipartClient = new MultipartUploadClient();
+
+// Export multipart upload functions
+export const multipartUpload = {
+  /**
+   * Start a new multipart upload
+   */
+  async initiate(
+    bucket: BucketName,
+    key: string,
+    contentType?: string
+  ): Promise<MultipartUploadInit> {
+    return multipartClient.initiateMultipartUpload(bucket, key, contentType);
+  },
+
+  /**
+   * Generate presigned URLs for uploading parts
+   */
+  generatePartUrls(
+    bucket: BucketName,
+    key: string,
+    uploadId: string,
+    partCount: number,
+    expiresIn?: number
+  ): PresignedPartUrl[] {
+    return multipartClient.generatePresignedPartUrls(bucket, key, uploadId, partCount, expiresIn);
+  },
+
+  /**
+   * Generate a single presigned URL for a specific part
+   */
+  generatePartUrl(
+    bucket: BucketName,
+    key: string,
+    uploadId: string,
+    partNumber: number,
+    expiresIn?: number
+  ): string {
+    return multipartClient.generatePresignedPartUrl(bucket, key, uploadId, partNumber, expiresIn);
+  },
+
+  /**
+   * Complete the multipart upload
+   */
+  async complete(
+    bucket: BucketName,
+    key: string,
+    uploadId: string,
+    parts: MultipartPart[]
+  ): Promise<{ etag: string; location: string }> {
+    return multipartClient.completeMultipartUpload(bucket, key, uploadId, parts);
+  },
+
+  /**
+   * Abort (cancel) a multipart upload
+   */
+  async abort(bucket: BucketName, key: string, uploadId: string): Promise<void> {
+    return multipartClient.abortMultipartUpload(bucket, key, uploadId);
+  },
+
+  /**
+   * List uploaded parts (for resuming uploads)
+   */
+  async listParts(
+    bucket: BucketName,
+    key: string,
+    uploadId: string
+  ): Promise<MultipartPart[]> {
+    return multipartClient.listParts(bucket, key, uploadId);
+  },
+};
+
 // Export singleton instance
 export const storage = storageClient;
 
 // Export types
-export type { StorageClient };
+export type { StorageClient, MultipartUploadClient };

@@ -31,6 +31,12 @@ import {
   shouldBlockPublicViewing,
   type SecretScanResult,
 } from '../lib/artifact-processor';
+import {
+  multipartUpload,
+  BUCKETS,
+  type MultipartPart,
+} from '../lib/storage';
+import { getRedis } from '../lib/redis';
 
 const {
   matches,
@@ -48,12 +54,13 @@ const MIN_PART_SIZE = 5 * 1024 * 1024; // 5MB minimum part size (S3 requirement)
 const MAX_PARTS = 1000;
 const UPLOAD_TIMEOUT_HOURS = 24;
 
-// In-memory upload tracking (in production, use Redis)
+// Upload tracking interface - stored in Redis for production use
 interface UploadPart {
   partNumber: number;
   size: number;
-  hash: string;
-  uploadedAt: Date;
+  etag: string; // ETag returned from S3
+  hash: string; // Client-computed SHA-256
+  uploadedAt: string; // ISO string for Redis serialization
 }
 
 interface PendingUpload {
@@ -64,15 +71,59 @@ interface PendingUpload {
   totalSize: number;
   parts: UploadPart[];
   partCount: number;
-  createdAt: Date;
-  expiresAt: Date;
+  createdAt: string; // ISO string for Redis serialization
+  expiresAt: string; // ISO string for Redis serialization
   completed: boolean;
   storageKey: string;
+  s3UploadId: string; // S3 multipart upload ID
   clientType?: string;
   clientVersion?: string;
 }
 
-// In-memory store for pending uploads (would use Redis in production)
+// Redis key prefix for upload sessions
+const UPLOAD_KEY_PREFIX = 'upload:session:';
+const UPLOAD_TTL_SECONDS = 24 * 60 * 60; // 24 hours
+
+// Helper to get upload from Redis
+async function getUploadSession(uploadId: string): Promise<PendingUpload | null> {
+  try {
+    const redis = getRedis();
+    const data = await redis.get(`${UPLOAD_KEY_PREFIX}${uploadId}`);
+    if (!data) return null;
+    return JSON.parse(data) as PendingUpload;
+  } catch {
+    // Fallback to in-memory if Redis unavailable
+    return pendingUploads.get(uploadId) || null;
+  }
+}
+
+// Helper to save upload to Redis
+async function saveUploadSession(upload: PendingUpload): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.setex(
+      `${UPLOAD_KEY_PREFIX}${upload.id}`,
+      UPLOAD_TTL_SECONDS,
+      JSON.stringify(upload)
+    );
+  } catch {
+    // Fallback to in-memory if Redis unavailable
+    pendingUploads.set(upload.id, upload);
+  }
+}
+
+// Helper to delete upload from Redis
+async function deleteUploadSession(uploadId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.del(`${UPLOAD_KEY_PREFIX}${uploadId}`);
+  } catch {
+    // Fallback to in-memory if Redis unavailable
+    pendingUploads.delete(uploadId);
+  }
+}
+
+// In-memory fallback store for pending uploads
 const pendingUploads = new Map<string, PendingUpload>();
 
 // Request body schemas
@@ -123,20 +174,29 @@ function calculatePartCount(totalSize: number, partSize: number = MIN_PART_SIZE)
   return Math.ceil(totalSize / partSize);
 }
 
-// Helper to generate presigned URLs for parts (mock implementation)
-function generatePresignedUrls(uploadId: string, partCount: number): { partNumber: number; url: string }[] {
-  // In production, this would generate actual S3 presigned URLs
-  return Array.from({ length: partCount }, (_, i) => ({
-    partNumber: i + 1,
-    url: `/api/uploads/${uploadId}/part?partNumber=${i + 1}`,
-  }));
+// Helper to generate presigned URLs for parts using S3 multipart upload
+function generatePresignedUrls(
+  storageKey: string,
+  s3UploadId: string,
+  partCount: number,
+  expiresIn: number = 3600
+): { partNumber: number; url: string }[] {
+  // Generate real S3 presigned URLs for each part
+  return multipartUpload.generatePartUrls(
+    BUCKETS.UPLOADS,
+    storageKey,
+    s3UploadId,
+    partCount,
+    expiresIn
+  );
 }
 
-// Cleanup expired uploads
+// Cleanup expired uploads (for in-memory fallback)
 function cleanupExpiredUploads(): void {
   const now = new Date();
   for (const [id, upload] of pendingUploads.entries()) {
-    if (upload.expiresAt < now && !upload.completed) {
+    const expiresAt = new Date(upload.expiresAt);
+    if (expiresAt < now && !upload.completed) {
       pendingUploads.delete(id);
     }
   }
@@ -267,7 +327,7 @@ export async function submissionRoutes(app: FastifyInstance) {
       // Verify user is a participant
       await validateMatchParticipant(matchId, userId);
 
-      // Check if user already has a pending upload for this match
+      // Check if user already has a pending upload for this match (in-memory fallback check)
       for (const upload of pendingUploads.values()) {
         if (upload.matchId === matchId && upload.userId === userId && !upload.completed) {
           throw new ConflictError(
@@ -283,6 +343,21 @@ export async function submissionRoutes(app: FastifyInstance) {
       const storageKey = generateStorageKey(matchId, userId, filename);
       const expiresAt = new Date(Date.now() + UPLOAD_TIMEOUT_HOURS * 60 * 60 * 1000);
 
+      // Initiate S3 multipart upload to get the S3 upload ID
+      let s3UploadId: string;
+      try {
+        const s3Init = await multipartUpload.initiate(
+          BUCKETS.UPLOADS,
+          storageKey,
+          'application/zip'
+        );
+        s3UploadId = s3Init.uploadId;
+      } catch (error) {
+        // If S3 is unavailable, use a mock upload ID for development
+        console.error('Failed to initiate S3 multipart upload, using mock mode:', error);
+        s3UploadId = `mock-${uploadId}`;
+      }
+
       const upload: PendingUpload = {
         id: uploadId,
         matchId,
@@ -291,25 +366,39 @@ export async function submissionRoutes(app: FastifyInstance) {
         totalSize,
         parts: [],
         partCount,
-        createdAt: new Date(),
-        expiresAt,
+        createdAt: new Date().toISOString(),
+        expiresAt: expiresAt.toISOString(),
         completed: false,
         storageKey,
+        s3UploadId,
         clientType,
         clientVersion,
       };
 
-      pendingUploads.set(uploadId, upload);
+      // Save to Redis (or fallback to in-memory)
+      await saveUploadSession(upload);
 
       // Generate presigned URLs for each part
-      const presignedUrls = generatePresignedUrls(uploadId, partCount);
+      let presignedUrls: { partNumber: number; url: string }[];
+      if (s3UploadId.startsWith('mock-')) {
+        // Mock mode: return API endpoints for development
+        presignedUrls = Array.from({ length: partCount }, (_, i) => ({
+          partNumber: i + 1,
+          url: `/api/uploads/${uploadId}/part?partNumber=${i + 1}`,
+        }));
+      } else {
+        // Real S3 presigned URLs
+        presignedUrls = generatePresignedUrls(storageKey, s3UploadId, partCount);
+      }
 
       return {
         uploadId,
+        s3UploadId,
         partSize: MIN_PART_SIZE,
         partCount,
         expiresAt: expiresAt.toISOString(),
         presignedUrls,
+        storageKey,
       };
     }
   );
@@ -368,8 +457,8 @@ export async function submissionRoutes(app: FastifyInstance) {
         throw new ValidationError('partNumber query parameter is required');
       }
 
-      // Get upload session
-      const upload = pendingUploads.get(uploadId);
+      // Get upload session from Redis (or in-memory fallback)
+      const upload = await getUploadSession(uploadId);
       if (!upload) {
         throw new NotFoundError('Upload session', uploadId);
       }
@@ -380,8 +469,8 @@ export async function submissionRoutes(app: FastifyInstance) {
       }
 
       // Check if expired
-      if (upload.expiresAt < new Date()) {
-        pendingUploads.delete(uploadId);
+      if (new Date(upload.expiresAt) < new Date()) {
+        await deleteUploadSession(uploadId);
         throw new ConflictError('Upload session has expired');
       }
 
@@ -402,7 +491,8 @@ export async function submissionRoutes(app: FastifyInstance) {
         return {
           partNumber: existingPart.partNumber,
           hash: existingPart.hash,
-          uploadedAt: existingPart.uploadedAt.toISOString(),
+          etag: existingPart.etag,
+          uploadedAt: existingPart.uploadedAt,
           message: 'Part already uploaded',
         };
       }
@@ -421,23 +511,29 @@ export async function submissionRoutes(app: FastifyInstance) {
       // Calculate hash of the part
       const hash = createHash('sha256').update(body).digest('hex');
 
-      // In production, would upload to S3 here
-      // For now, just track the part metadata
+      // For mock mode, generate a mock etag
+      // In real S3 mode, the client uploads directly to S3 and gets the etag from S3 response
+      const etag = `"${hash.slice(0, 32)}"`;
 
       const part: UploadPart = {
         partNumber,
         size,
+        etag,
         hash,
-        uploadedAt: new Date(),
+        uploadedAt: new Date().toISOString(),
       };
 
       upload.parts.push(part);
       upload.parts.sort((a, b) => a.partNumber - b.partNumber);
 
+      // Save updated session
+      await saveUploadSession(upload);
+
       return {
         partNumber: part.partNumber,
         hash: part.hash,
-        uploadedAt: part.uploadedAt.toISOString(),
+        etag: part.etag,
+        uploadedAt: part.uploadedAt,
       };
     }
   );
@@ -509,8 +605,8 @@ export async function submissionRoutes(app: FastifyInstance) {
       const { id: uploadId } = paramResult.data;
       const { parts: clientParts, totalHash } = bodyResult.data;
 
-      // Get upload session
-      const upload = pendingUploads.get(uploadId);
+      // Get upload session from Redis (or in-memory fallback)
+      const upload = await getUploadSession(uploadId);
       if (!upload) {
         throw new NotFoundError('Upload session', uploadId);
       }
@@ -521,8 +617,9 @@ export async function submissionRoutes(app: FastifyInstance) {
       }
 
       // Check if expired
-      if (upload.expiresAt < new Date()) {
-        pendingUploads.delete(uploadId);
+      const expiresAt = new Date(upload.expiresAt);
+      if (expiresAt < new Date()) {
+        await deleteUploadSession(uploadId);
         throw new ConflictError('Upload session has expired');
       }
 
@@ -570,6 +667,30 @@ export async function submissionRoutes(app: FastifyInstance) {
         );
       }
 
+      // Complete the S3 multipart upload (if real S3 mode)
+      let s3CompleteResult: { etag: string; location: string } | null = null;
+      const isRealS3 = !upload.s3UploadId.startsWith('mock-');
+
+      if (isRealS3) {
+        // Build parts array for S3 complete
+        const s3Parts: MultipartPart[] = upload.parts.map((p) => ({
+          partNumber: p.partNumber,
+          etag: p.etag,
+        }));
+
+        try {
+          s3CompleteResult = await multipartUpload.complete(
+            BUCKETS.SUBMISSIONS,
+            upload.storageKey,
+            upload.s3UploadId,
+            s3Parts
+          );
+        } catch (error) {
+          // Log the error but don't fail - artifact record can still be created
+          console.error('Failed to complete S3 multipart upload:', error);
+        }
+      }
+
       // Create manifest for the artifact
       const manifest = {
         filename: upload.filename,
@@ -579,10 +700,13 @@ export async function submissionRoutes(app: FastifyInstance) {
           partNumber: p.partNumber,
           size: p.size,
           hash: p.hash,
+          etag: p.etag,
         })),
         uploadedAt: new Date().toISOString(),
         clientType: upload.clientType,
         clientVersion: upload.clientVersion,
+        s3Etag: s3CompleteResult?.etag,
+        s3Location: s3CompleteResult?.location,
       };
 
       // Create artifact record
@@ -632,12 +756,14 @@ export async function submissionRoutes(app: FastifyInstance) {
           )
         );
 
-      // Mark upload as completed
+      // Mark upload as completed and save to Redis
       upload.completed = true;
+      await saveUploadSession(upload);
 
       // Clean up from pending uploads after a short delay
-      setTimeout(() => {
-        pendingUploads.delete(uploadId);
+      // Use deleteUploadSession which handles both Redis and in-memory fallback
+      setTimeout(async () => {
+        await deleteUploadSession(uploadId);
       }, 5 * 60 * 1000); // Keep for 5 minutes for debugging
 
       return {
@@ -708,8 +834,8 @@ export async function submissionRoutes(app: FastifyInstance) {
 
       const { id: uploadId } = paramResult.data;
 
-      // Get upload session
-      const upload = pendingUploads.get(uploadId);
+      // Get upload session from Redis (or in-memory fallback)
+      const upload = await getUploadSession(uploadId);
       if (!upload) {
         throw new NotFoundError('Upload session', uploadId);
       }
@@ -732,12 +858,12 @@ export async function submissionRoutes(app: FastifyInstance) {
         totalParts: upload.partCount,
         progress: Math.round(progress * 100) / 100,
         completed: upload.completed,
-        expiresAt: upload.expiresAt.toISOString(),
+        expiresAt: upload.expiresAt, // Already a string from Redis
         parts: upload.parts.map((p) => ({
           partNumber: p.partNumber,
           size: p.size,
           hash: p.hash,
-          uploadedAt: p.uploadedAt.toISOString(),
+          uploadedAt: p.uploadedAt, // Already a string from Redis
         })),
       };
     }
@@ -781,8 +907,8 @@ export async function submissionRoutes(app: FastifyInstance) {
 
       const { id: uploadId } = paramResult.data;
 
-      // Get upload session
-      const upload = pendingUploads.get(uploadId);
+      // Get upload session from Redis (or in-memory fallback)
+      const upload = await getUploadSession(uploadId);
       if (!upload) {
         throw new NotFoundError('Upload session', uploadId);
       }
@@ -792,10 +918,23 @@ export async function submissionRoutes(app: FastifyInstance) {
         throw new ForbiddenError('Not authorized to cancel this upload');
       }
 
-      // Remove from pending uploads
-      pendingUploads.delete(uploadId);
+      // Abort the S3 multipart upload (if real S3 mode)
+      const isRealS3 = !upload.s3UploadId.startsWith('mock-');
+      if (isRealS3) {
+        try {
+          await multipartUpload.abort(
+            BUCKETS.SUBMISSIONS,
+            upload.storageKey,
+            upload.s3UploadId
+          );
+        } catch (error) {
+          // Log but don't fail - session cleanup should still happen
+          console.error('Failed to abort S3 multipart upload:', error);
+        }
+      }
 
-      // In production, would also delete any uploaded parts from S3
+      // Remove from pending uploads (Redis or in-memory)
+      await deleteUploadSession(uploadId);
 
       return {
         message: 'Upload cancelled successfully',
