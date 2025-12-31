@@ -12,10 +12,35 @@
  * - Jobs support retries with exponential backoff
  * - Failed jobs are moved to dead letter queue for inspection
  * - Job progress and results are tracked in Redis
+ *
+ * Observability:
+ * - Correlation ID propagation via job metadata
+ * - Structured logging with request context
+ * - Trace context propagation for distributed tracing
  */
 
 import { Queue, Worker, Job, QueueEvents, ConnectionOptions } from 'bullmq';
 import { env } from './env';
+import { createContextLogger, logger, getCurrentContext, requestContext } from './logger';
+import { startSpan, SemanticAttributes, injectTraceContext, TraceContext } from './tracing';
+
+/**
+ * Job metadata for observability
+ */
+export interface JobMetadata {
+  requestId?: string;
+  userId?: string;
+  traceId?: string;
+  spanId?: string;
+  createdAt: string;
+}
+
+/**
+ * Base job data with metadata
+ */
+interface BaseJobData {
+  _metadata?: JobMetadata;
+}
 
 // Parse Redis URL for BullMQ connection
 function parseRedisUrl(url: string): ConnectionOptions {
@@ -49,7 +74,7 @@ export const QUEUE_NAMES = {
 } as const;
 
 // Job types and their data interfaces
-export interface JudgingJobData {
+export interface JudgingJobData extends BaseJobData {
   matchId: string;
   submissionId: string;
   artifactId: string;
@@ -58,7 +83,7 @@ export interface JudgingJobData {
   priority?: number;
 }
 
-export interface NotificationJobData {
+export interface NotificationJobData extends BaseJobData {
   type: 'email' | 'push' | 'in_app';
   userId: string;
   template: string;
@@ -66,7 +91,7 @@ export interface NotificationJobData {
   priority?: 'high' | 'normal' | 'low';
 }
 
-export interface SettlementJobData {
+export interface SettlementJobData extends BaseJobData {
   matchId: string;
   outcome: 'winner_a' | 'winner_b' | 'tie' | 'cancelled';
   scoreA?: number;
@@ -74,7 +99,7 @@ export interface SettlementJobData {
   reason?: string;
 }
 
-export interface CleanupJobData {
+export interface CleanupJobData extends BaseJobData {
   type: 'archive_matches' | 'clear_cache' | 'expire_sessions' | 'prune_artifacts';
   olderThanDays?: number;
   dryRun?: boolean;
@@ -119,6 +144,92 @@ const workers: Map<string, Worker> = new Map();
 const queueEvents: Map<string, QueueEvents> = new Map();
 
 /**
+ * Inject observability metadata into job data
+ * Captures current request context (requestId, userId, traceId)
+ */
+function injectJobMetadata<T extends BaseJobData>(data: T): T {
+  const ctx = getCurrentContext();
+
+  const metadata: JobMetadata = {
+    requestId: ctx?.requestId,
+    userId: ctx?.userId,
+    createdAt: new Date().toISOString(),
+  };
+
+  return {
+    ...data,
+    _metadata: metadata,
+  };
+}
+
+/**
+ * Create a context-aware logger for job processing
+ */
+function createJobLogger(job: Job<BaseJobData>) {
+  const metadata = job.data._metadata;
+
+  return createContextLogger({
+    requestId: metadata?.requestId,
+    userId: metadata?.userId,
+    jobId: job.id ?? undefined,
+    jobName: job.name,
+    queueName: job.queueName,
+  });
+}
+
+/**
+ * Wrap a job processor to run within request context
+ * This enables context-aware logging throughout the job processing
+ */
+function wrapProcessor<T extends BaseJobData, R>(
+  processor: (job: Job<T>) => Promise<R>
+): (job: Job<T>) => Promise<R> {
+  return async (job: Job<T>) => {
+    const metadata = job.data._metadata;
+    const jobLogger = createJobLogger(job);
+
+    // Run processor within request context
+    return requestContext.run(
+      {
+        requestId: metadata?.requestId || job.id || 'unknown',
+        userId: metadata?.userId,
+        logger: jobLogger,
+      },
+      async () => {
+        jobLogger.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, `Processing job: ${job.name}`);
+
+        const startTime = process.hrtime.bigint();
+        try {
+          const result = await processor(job);
+          const durationMs = Number(process.hrtime.bigint() - startTime) / 1e6;
+
+          jobLogger.info(
+            { jobId: job.id, durationMs: Math.round(durationMs * 100) / 100 },
+            `Job completed: ${job.name}`
+          );
+
+          return result;
+        } catch (error) {
+          const durationMs = Number(process.hrtime.bigint() - startTime) / 1e6;
+
+          jobLogger.error(
+            {
+              jobId: job.id,
+              durationMs: Math.round(durationMs * 100) / 100,
+              err: error,
+              attempt: job.attemptsMade + 1,
+            },
+            `Job failed: ${job.name}`
+          );
+
+          throw error;
+        }
+      }
+    );
+  };
+}
+
+/**
  * Get or create a queue by name
  */
 export function getQueue<T = unknown>(name: string): Queue<T> {
@@ -131,7 +242,7 @@ export function getQueue<T = unknown>(name: string): Queue<T> {
     });
 
     queue.on('error', (err) => {
-      console.error(`Queue ${name} error:`, err.message);
+      logger.error({ err, queue: name }, 'Queue error');
     });
 
     queues.set(name, queue);
@@ -160,14 +271,25 @@ export function getQueueEvents(name: string): QueueEvents {
 
 /**
  * Add a judging job to the queue
+ * Automatically injects correlation ID metadata from current request context
  */
 export async function addJudgingJob(
   data: JudgingJobData,
   options?: { priority?: number; delay?: number }
 ): Promise<Job<JudgingJobData>> {
   const queue = getQueue<JudgingJobData>(QUEUE_NAMES.JUDGING);
+  const dataWithMetadata = injectJobMetadata(data);
 
-  return queue.add('judge-submission', data, {
+  logger.info(
+    {
+      matchId: data.matchId,
+      submissionId: data.submissionId,
+      requestId: dataWithMetadata._metadata?.requestId,
+    },
+    'Adding judging job to queue'
+  );
+
+  return queue.add('judge-submission', dataWithMetadata, {
     priority: options?.priority ?? data.priority ?? 5,
     delay: options?.delay,
     jobId: `judging-${data.submissionId}`, // Prevent duplicate judging
@@ -176,13 +298,16 @@ export async function addJudgingJob(
 
 /**
  * Create judging worker
+ * Wraps processor with context-aware logging and correlation ID propagation
  */
 export function createJudgingWorker(
   processor: (job: Job<JudgingJobData>) => Promise<JudgingJobResult>
 ): Worker<JudgingJobData, JudgingJobResult> {
+  const wrappedProcessor = wrapProcessor(processor);
+
   const worker = new Worker<JudgingJobData, JudgingJobResult>(
     QUEUE_NAMES.JUDGING,
-    processor,
+    wrappedProcessor,
     {
       connection,
       concurrency: 2, // Run 2 judging jobs in parallel
@@ -194,15 +319,21 @@ export function createJudgingWorker(
   );
 
   worker.on('completed', (job, result) => {
-    console.log(`Judging job ${job.id} completed:`, result.score);
+    const jobLogger = createJobLogger(job);
+    jobLogger.info({ score: result.score }, 'Judging job completed');
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`Judging job ${job?.id} failed:`, err.message);
+    if (job) {
+      const jobLogger = createJobLogger(job);
+      jobLogger.error({ err }, 'Judging job failed');
+    } else {
+      logger.error({ err }, 'Judging job failed (job unavailable)');
+    }
   });
 
   worker.on('error', (err) => {
-    console.error('Judging worker error:', err.message);
+    logger.error({ err, queue: QUEUE_NAMES.JUDGING }, 'Judging worker error');
   });
 
   workers.set(QUEUE_NAMES.JUDGING, worker);
@@ -215,17 +346,29 @@ export function createJudgingWorker(
 
 /**
  * Add a notification job to the queue
+ * Automatically injects correlation ID metadata from current request context
  */
 export async function addNotificationJob(
   data: NotificationJobData,
   options?: { delay?: number }
 ): Promise<Job<NotificationJobData>> {
   const queue = getQueue<NotificationJobData>(QUEUE_NAMES.NOTIFICATIONS);
+  const dataWithMetadata = injectJobMetadata(data);
 
   const priority =
     data.priority === 'high' ? 1 : data.priority === 'low' ? 10 : 5;
 
-  return queue.add(`notify-${data.type}`, data, {
+  logger.info(
+    {
+      userId: data.userId,
+      type: data.type,
+      template: data.template,
+      requestId: dataWithMetadata._metadata?.requestId,
+    },
+    'Adding notification job to queue'
+  );
+
+  return queue.add(`notify-${data.type}`, dataWithMetadata, {
     priority,
     delay: options?.delay,
   });
@@ -233,13 +376,16 @@ export async function addNotificationJob(
 
 /**
  * Create notification worker
+ * Wraps processor with context-aware logging and correlation ID propagation
  */
 export function createNotificationWorker(
   processor: (job: Job<NotificationJobData>) => Promise<void>
 ): Worker<NotificationJobData, void> {
+  const wrappedProcessor = wrapProcessor(processor);
+
   const worker = new Worker<NotificationJobData, void>(
     QUEUE_NAMES.NOTIFICATIONS,
-    processor,
+    wrappedProcessor,
     {
       connection,
       concurrency: 5, // Run 5 notification jobs in parallel
@@ -247,11 +393,21 @@ export function createNotificationWorker(
   );
 
   worker.on('completed', (job) => {
-    console.log(`Notification job ${job.id} completed`);
+    const jobLogger = createJobLogger(job);
+    jobLogger.info({ type: job.data.type, userId: job.data.userId }, 'Notification job completed');
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`Notification job ${job?.id} failed:`, err.message);
+    if (job) {
+      const jobLogger = createJobLogger(job);
+      jobLogger.error({ err }, 'Notification job failed');
+    } else {
+      logger.error({ err }, 'Notification job failed (job unavailable)');
+    }
+  });
+
+  worker.on('error', (err) => {
+    logger.error({ err, queue: QUEUE_NAMES.NOTIFICATIONS }, 'Notification worker error');
   });
 
   workers.set(QUEUE_NAMES.NOTIFICATIONS, worker);
@@ -264,14 +420,25 @@ export function createNotificationWorker(
 
 /**
  * Add a settlement job to the queue
+ * Automatically injects correlation ID metadata from current request context
  */
 export async function addSettlementJob(
   data: SettlementJobData,
   options?: { delay?: number }
 ): Promise<Job<SettlementJobData>> {
   const queue = getQueue<SettlementJobData>(QUEUE_NAMES.SETTLEMENT);
+  const dataWithMetadata = injectJobMetadata(data);
 
-  return queue.add('settle-match', data, {
+  logger.info(
+    {
+      matchId: data.matchId,
+      outcome: data.outcome,
+      requestId: dataWithMetadata._metadata?.requestId,
+    },
+    'Adding settlement job to queue'
+  );
+
+  return queue.add('settle-match', dataWithMetadata, {
     delay: options?.delay,
     jobId: `settlement-${data.matchId}`, // Prevent duplicate settlements
   });
@@ -279,13 +446,16 @@ export async function addSettlementJob(
 
 /**
  * Create settlement worker
+ * Wraps processor with context-aware logging and correlation ID propagation
  */
 export function createSettlementWorker(
   processor: (job: Job<SettlementJobData>) => Promise<SettlementJobResult>
 ): Worker<SettlementJobData, SettlementJobResult> {
+  const wrappedProcessor = wrapProcessor(processor);
+
   const worker = new Worker<SettlementJobData, SettlementJobResult>(
     QUEUE_NAMES.SETTLEMENT,
-    processor,
+    wrappedProcessor,
     {
       connection,
       concurrency: 1, // Process settlements one at a time for safety
@@ -293,11 +463,24 @@ export function createSettlementWorker(
   );
 
   worker.on('completed', (job, result) => {
-    console.log(`Settlement job ${job.id} completed:`, result);
+    const jobLogger = createJobLogger(job);
+    jobLogger.info(
+      { matchId: result.matchId, settled: result.settled, winnerUserId: result.winnerUserId },
+      'Settlement job completed'
+    );
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`Settlement job ${job?.id} failed:`, err.message);
+    if (job) {
+      const jobLogger = createJobLogger(job);
+      jobLogger.error({ err }, 'Settlement job failed');
+    } else {
+      logger.error({ err }, 'Settlement job failed (job unavailable)');
+    }
+  });
+
+  worker.on('error', (err) => {
+    logger.error({ err, queue: QUEUE_NAMES.SETTLEMENT }, 'Settlement worker error');
   });
 
   workers.set(QUEUE_NAMES.SETTLEMENT, worker);
@@ -310,14 +493,26 @@ export function createSettlementWorker(
 
 /**
  * Add a cleanup job to the queue
+ * Automatically injects correlation ID metadata from current request context
  */
 export async function addCleanupJob(
   data: CleanupJobData,
   options?: { delay?: number; repeat?: { pattern: string } }
 ): Promise<Job<CleanupJobData>> {
   const queue = getQueue<CleanupJobData>(QUEUE_NAMES.CLEANUP);
+  const dataWithMetadata = injectJobMetadata(data);
 
-  return queue.add(`cleanup-${data.type}`, data, {
+  logger.info(
+    {
+      type: data.type,
+      olderThanDays: data.olderThanDays,
+      dryRun: data.dryRun,
+      requestId: dataWithMetadata._metadata?.requestId,
+    },
+    'Adding cleanup job to queue'
+  );
+
+  return queue.add(`cleanup-${data.type}`, dataWithMetadata, {
     delay: options?.delay,
     repeat: options?.repeat,
     priority: 10, // Low priority
@@ -326,13 +521,16 @@ export async function addCleanupJob(
 
 /**
  * Create cleanup worker
+ * Wraps processor with context-aware logging and correlation ID propagation
  */
 export function createCleanupWorker(
   processor: (job: Job<CleanupJobData>) => Promise<{ cleaned: number }>
 ): Worker<CleanupJobData, { cleaned: number }> {
+  const wrappedProcessor = wrapProcessor(processor);
+
   const worker = new Worker<CleanupJobData, { cleaned: number }>(
     QUEUE_NAMES.CLEANUP,
-    processor,
+    wrappedProcessor,
     {
       connection,
       concurrency: 1, // Run cleanup jobs one at a time
@@ -340,11 +538,21 @@ export function createCleanupWorker(
   );
 
   worker.on('completed', (job, result) => {
-    console.log(`Cleanup job ${job.id} completed: ${result.cleaned} items`);
+    const jobLogger = createJobLogger(job);
+    jobLogger.info({ cleanedItems: result.cleaned, type: job.data.type }, 'Cleanup job completed');
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`Cleanup job ${job?.id} failed:`, err.message);
+    if (job) {
+      const jobLogger = createJobLogger(job);
+      jobLogger.error({ err }, 'Cleanup job failed');
+    } else {
+      logger.error({ err }, 'Cleanup job failed (job unavailable)');
+    }
+  });
+
+  worker.on('error', (err) => {
+    logger.error({ err, queue: QUEUE_NAMES.CLEANUP }, 'Cleanup worker error');
   });
 
   workers.set(QUEUE_NAMES.CLEANUP, worker);
@@ -505,7 +713,7 @@ export async function retryJob(
  * Close all queues and workers gracefully
  */
 export async function closeQueues(): Promise<void> {
-  console.log('Closing BullMQ queues and workers...');
+  logger.info('Closing BullMQ queues and workers...');
 
   // Close workers first
   const workerClosePromises = Array.from(workers.values()).map((worker) =>
@@ -528,7 +736,7 @@ export async function closeQueues(): Promise<void> {
   await Promise.all(queueClosePromises);
   queues.clear();
 
-  console.log('BullMQ shutdown complete');
+  logger.info('BullMQ shutdown complete');
 }
 
 // ============================================================
@@ -563,5 +771,5 @@ export async function setupScheduledJobs(): Promise<void> {
     { repeat: { pattern: '0 4 * * 0' } }
   );
 
-  console.log('Scheduled cleanup jobs configured');
+  logger.info('Scheduled cleanup jobs configured');
 }
