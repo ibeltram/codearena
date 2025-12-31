@@ -10,6 +10,13 @@ export {
   useForfeit,
 } from './use-match';
 export {
+  useUserProfile,
+  useMyProfile,
+  useUserMatchHistory,
+  useUpdateProfile,
+  useTogglePublicArtifacts,
+} from './use-profile';
+export {
   useCreditBalance,
   useCreditHolds,
   useCreditHistory,
