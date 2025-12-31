@@ -9,14 +9,35 @@ interface MatchTimerProps {
   startAt: string | null;
   status: string;
   className?: string;
+  /** Server-side time remaining in ms (from SSE) - takes precedence over client-side calculation */
+  serverTimeRemaining?: number | null;
+  /** Whether the timer is in warning state (from SSE) */
+  isWarning?: boolean;
 }
 
-export function MatchTimer({ endAt, startAt, status, className }: MatchTimerProps) {
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+export function MatchTimer({
+  endAt,
+  startAt,
+  status,
+  className,
+  serverTimeRemaining,
+  isWarning: serverIsWarning,
+}: MatchTimerProps) {
+  const [clientTimeRemaining, setClientTimeRemaining] = useState<number | null>(null);
+
+  // Use server time if available, otherwise fall back to client calculation
+  const timeRemaining = serverTimeRemaining !== undefined && serverTimeRemaining !== null
+    ? serverTimeRemaining
+    : clientTimeRemaining;
 
   useEffect(() => {
+    // Skip client-side calculation if server provides time
+    if (serverTimeRemaining !== undefined && serverTimeRemaining !== null) {
+      return;
+    }
+
     if (!endAt || status !== 'in_progress') {
-      setTimeRemaining(null);
+      setClientTimeRemaining(null);
       return;
     }
 
@@ -24,14 +45,14 @@ export function MatchTimer({ endAt, startAt, status, className }: MatchTimerProp
       const now = Date.now();
       const end = new Date(endAt).getTime();
       const remaining = Math.max(0, end - now);
-      setTimeRemaining(remaining);
+      setClientTimeRemaining(remaining);
     };
 
     calculateRemaining();
     const interval = setInterval(calculateRemaining, 1000);
 
     return () => clearInterval(interval);
-  }, [endAt, status]);
+  }, [endAt, status, serverTimeRemaining]);
 
   if (timeRemaining === null) {
     if (status === 'matched') {
@@ -57,7 +78,7 @@ export function MatchTimer({ endAt, startAt, status, className }: MatchTimerProp
   const minutes = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
   const seconds = Math.floor((timeRemaining % (1000 * 60)) / 1000);
 
-  const isUrgent = timeRemaining < 5 * 60 * 1000; // Less than 5 minutes
+  const isUrgent = serverIsWarning || timeRemaining < 5 * 60 * 1000; // Less than 5 minutes or server warning
   const isCritical = timeRemaining < 60 * 1000; // Less than 1 minute
 
   const formatTime = (value: number) => value.toString().padStart(2, '0');

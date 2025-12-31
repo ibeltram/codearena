@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useState, useCallback } from 'react';
 import {
   ArrowLeft,
   Clock,
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   FileCode2,
   Gavel,
+  RefreshCw,
 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout';
@@ -28,8 +30,10 @@ import {
   EmptyParticipantSlot,
   MatchStatusBadge,
   MatchModeBadge,
+  ConnectionStatusIndicator,
+  LiveBadge,
 } from '@/components/matches';
-import { useMatch, useReadyUp, useForfeit } from '@/hooks';
+import { useMatch, useReadyUp, useForfeit, useMatchEvents } from '@/hooks';
 import { categoryLabels, categoryColors, difficultyLabels, difficultyColors } from '@/types/challenge';
 import { cn } from '@/lib/utils';
 
@@ -44,6 +48,33 @@ export default function MatchDetailPage() {
   const { data: match, isLoading, isError, error } = useMatch(matchId);
   const readyMutation = useReadyUp();
   const forfeitMutation = useForfeit();
+
+  // SSE real-time events - keep track of live timer from server
+  const [liveTimerRemaining, setLiveTimerRemaining] = useState<number | null>(null);
+
+  const handleTimerTick = useCallback((remainingMs: number, isWarning: boolean) => {
+    setLiveTimerRemaining(remainingMs);
+  }, []);
+
+  const handleStateChange = useCallback((newStatus: string) => {
+    console.log('[SSE] Match status changed:', newStatus);
+  }, []);
+
+  // Enable SSE for active matches
+  const shouldEnableSSE = match && ['matched', 'in_progress', 'submission_locked', 'judging'].includes(match.status);
+
+  const {
+    connectionStatus,
+    timerRemaining,
+    timerWarning,
+    reconnect,
+    reconnectAttempts,
+  } = useMatchEvents(matchId, {
+    enabled: shouldEnableSSE,
+    userId: MOCK_USER_ID,
+    onTimerTick: handleTimerTick,
+    onStateChange: handleStateChange,
+  });
 
   // Find current user's participant record (mock)
   const currentParticipant = match?.participants?.find(
@@ -125,11 +156,28 @@ export default function MatchDetailPage() {
               <h1 className="text-2xl font-bold">{challenge.title}</h1>
               <MatchStatusBadge status={status} />
               <MatchModeBadge mode={mode} />
+              {/* Live indicator for active matches */}
+              {shouldEnableSSE && <LiveBadge isLive={connectionStatus === 'connected'} />}
             </div>
             <p className="text-muted-foreground mt-1">
               Match #{matchId.slice(0, 8)}
             </p>
           </div>
+          {/* Connection status indicator */}
+          {shouldEnableSSE && (
+            <div className="flex items-center gap-2">
+              <ConnectionStatusIndicator
+                status={connectionStatus}
+                reconnectAttempts={reconnectAttempts}
+              />
+              {connectionStatus === 'error' && (
+                <Button variant="ghost" size="sm" onClick={reconnect} className="gap-1">
+                  <RefreshCw className="h-3 w-3" />
+                  Retry
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Timer and actions */}
@@ -141,6 +189,8 @@ export default function MatchDetailPage() {
                   status={status}
                   startAt={startAt}
                   endAt={endAt}
+                  serverTimeRemaining={timerRemaining}
+                  isWarning={timerWarning}
                   className="text-3xl"
                 />
               </div>

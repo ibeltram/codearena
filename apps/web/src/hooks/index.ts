@@ -22,6 +22,16 @@ export {
   useForfeit,
 } from './use-match';
 export {
+  useMatchEvents,
+  getConnectionStatusColor,
+  getConnectionStatusText,
+  type MatchEvent,
+  type MatchEventType,
+  type ConnectionStatus,
+  type UseMatchEventsOptions,
+  type UseMatchEventsReturn,
+} from './use-match-events';
+export {
   useUserProfile,
   useMyProfile,
   useUserMatchHistory,

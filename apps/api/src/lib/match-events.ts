@@ -9,6 +9,7 @@ import type { WebSocket } from '@fastify/websocket';
 import { FastifyReply } from 'fastify';
 import { MatchEvent, MatchEventType, onMatchEvent, getMatchState } from './match-state-machine';
 import { logger } from './logger';
+import { getRedis, getSubscriber, CHANNELS } from './redis';
 
 // Client connection types
 type ConnectionType = 'websocket' | 'sse';
@@ -155,13 +156,20 @@ async function broadcastToMatch(matchId: string, event: WireEvent): Promise<void
 /**
  * Add a new client connection
  */
-export function addConnection(client: ClientConnection): void {
+export async function addConnection(client: ClientConnection): Promise<void> {
+  const isFirstConnection = !connections.has(client.matchId) || connections.get(client.matchId)!.size === 0;
+
   if (!connections.has(client.matchId)) {
     connections.set(client.matchId, new Set());
   }
 
   connections.get(client.matchId)!.add(client);
   userConnections.set(client.userId, client.matchId);
+
+  // Subscribe to Redis channel for this match if first connection
+  if (isFirstConnection) {
+    await subscribeToMatchChannel(client.matchId);
+  }
 
   logger.info(
     { matchId: client.matchId, userId: client.userId, type: client.type },
@@ -172,12 +180,14 @@ export function addConnection(client: ClientConnection): void {
 /**
  * Remove a client connection
  */
-export function removeConnection(client: ClientConnection): void {
+export async function removeConnection(client: ClientConnection): Promise<void> {
   const matchConnections = connections.get(client.matchId);
   if (matchConnections) {
     matchConnections.delete(client);
     if (matchConnections.size === 0) {
       connections.delete(client.matchId);
+      // Unsubscribe from Redis channel when no more local connections
+      await unsubscribeFromMatchChannel(client.matchId);
     }
   }
 
@@ -379,14 +389,133 @@ export function stopTimerBroadcast(matchId: string): void {
 }
 
 /**
+ * Publish event to Redis for multi-instance support
+ */
+async function publishToRedis(matchId: string, wireEvent: WireEvent): Promise<void> {
+  try {
+    const redis = getRedis();
+    // Publish to match-specific channel for targeted delivery
+    const channel = `${CHANNELS.MATCH_UPDATES}:${matchId}`;
+    await redis.publish(channel, JSON.stringify(wireEvent));
+  } catch (error) {
+    logger.error({ error, matchId }, 'Failed to publish to Redis');
+  }
+}
+
+/**
+ * Handle incoming Redis message and broadcast to local connections
+ */
+function handleRedisMessage(channel: string, message: string): void {
+  try {
+    // Extract matchId from channel (format: match:updates:${matchId})
+    const parts = channel.split(':');
+    const matchId = parts[parts.length - 1];
+
+    if (!matchId) return;
+
+    const event: WireEvent = JSON.parse(message);
+
+    // Only broadcast to local connections (avoid duplicate sends)
+    broadcastToMatchLocal(matchId, event);
+  } catch (error) {
+    logger.error({ error, channel }, 'Failed to handle Redis message');
+  }
+}
+
+/**
+ * Broadcast event to local connections only (used by Redis subscriber)
+ */
+async function broadcastToMatchLocal(matchId: string, event: WireEvent): Promise<void> {
+  const matchConnections = connections.get(matchId);
+  if (!matchConnections || matchConnections.size === 0) {
+    return;
+  }
+
+  const deadConnections: ClientConnection[] = [];
+
+  for (const client of matchConnections) {
+    const sent = await sendToClient(client, event);
+    if (!sent) {
+      deadConnections.push(client);
+    }
+  }
+
+  // Clean up dead connections
+  for (const client of deadConnections) {
+    removeConnection(client);
+  }
+}
+
+// Track active subscriptions
+const activeSubscriptions = new Set<string>();
+
+/**
+ * Subscribe to Redis channel for a match
+ */
+async function subscribeToMatchChannel(matchId: string): Promise<void> {
+  const channel = `${CHANNELS.MATCH_UPDATES}:${matchId}`;
+
+  if (activeSubscriptions.has(channel)) {
+    return; // Already subscribed
+  }
+
+  try {
+    const subscriber = getSubscriber();
+
+    // Set up message handler if not already done
+    if (activeSubscriptions.size === 0) {
+      subscriber.on('message', handleRedisMessage);
+    }
+
+    await subscriber.subscribe(channel);
+    activeSubscriptions.add(channel);
+    logger.info({ matchId, channel }, 'Subscribed to match channel');
+  } catch (error) {
+    logger.error({ error, matchId }, 'Failed to subscribe to match channel');
+  }
+}
+
+/**
+ * Unsubscribe from Redis channel for a match
+ */
+async function unsubscribeFromMatchChannel(matchId: string): Promise<void> {
+  const channel = `${CHANNELS.MATCH_UPDATES}:${matchId}`;
+
+  if (!activeSubscriptions.has(channel)) {
+    return; // Not subscribed
+  }
+
+  // Only unsubscribe if no local connections
+  const matchConnections = connections.get(matchId);
+  if (matchConnections && matchConnections.size > 0) {
+    return; // Still have local connections
+  }
+
+  try {
+    const subscriber = getSubscriber();
+    await subscriber.unsubscribe(channel);
+    activeSubscriptions.delete(channel);
+    logger.info({ matchId, channel }, 'Unsubscribed from match channel');
+  } catch (error) {
+    logger.error({ error, matchId }, 'Failed to unsubscribe from match channel');
+  }
+}
+
+/**
  * Initialize match events system
  * Subscribe to state machine events and broadcast to connected clients
+ * Uses Redis pub/sub for multi-instance support
  */
 export function initializeMatchEvents(): void {
   // Subscribe to all match events from state machine
   onMatchEvent(async (event: MatchEvent) => {
     const wireEvent = createWireEvent(event);
-    await broadcastToMatch(event.matchId, wireEvent);
+
+    // Publish to Redis for multi-instance distribution
+    await publishToRedis(event.matchId, wireEvent);
+
+    // Also broadcast locally for single-instance efficiency
+    await broadcastToMatchLocal(event.matchId, wireEvent);
 
     // Handle timer broadcasts based on events
     if (event.type === 'match.started' && event.data?.endAt) {
@@ -400,13 +529,13 @@ export function initializeMatchEvents(): void {
     }
   });
 
-  logger.info('Match events system initialized');
+  logger.info('Match events system initialized with Redis pub/sub support');
 }
 
 /**
  * Cleanup all connections (for graceful shutdown)
  */
-export function cleanupAllConnections(): void {
+export async function cleanupAllConnections(): Promise<void> {
   // Stop all timer broadcasts
   for (const matchId of timerIntervals.keys()) {
     stopTimerBroadcast(matchId);
@@ -425,6 +554,17 @@ export function cleanupAllConnections(): void {
   }
   connections.clear();
   userConnections.clear();
+
+  // Unsubscribe from all Redis channels
+  try {
+    const subscriber = getSubscriber();
+    for (const channel of activeSubscriptions) {
+      await subscriber.unsubscribe(channel);
+    }
+    activeSubscriptions.clear();
+  } catch (error) {
+    logger.error({ error }, 'Error cleaning up Redis subscriptions');
+  }
 
   logger.info('All match event connections cleaned up');
 }
