@@ -1,8 +1,8 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Wallet | CodeArena',
-  description: 'Manage your CodeArena credits, purchase more, and view your transaction history.',
+  title: 'Wallet | RepoRivals',
+  description: 'Manage your RepoRivals credits, purchase more, and view your transaction history.',
 };
 
 export default function WalletLayout({

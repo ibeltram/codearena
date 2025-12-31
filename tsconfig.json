@@ -19,7 +19,7 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true,
     "paths": {
-      "@codearena/shared/*": ["./packages/shared/src/*"]
+      "@reporivals/shared/*": ["./packages/shared/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", ".next", "out"]

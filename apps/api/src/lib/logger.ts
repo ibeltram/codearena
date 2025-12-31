@@ -75,7 +75,7 @@ const baseConfig: pino.LoggerOptions = {
   // Base context fields
   base: {
     env: env.NODE_ENV,
-    service: 'codearena-api',
+    service: 'reporivals-api',
     version: process.env.npm_package_version || '0.1.0',
   },
 

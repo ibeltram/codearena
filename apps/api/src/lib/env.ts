@@ -7,7 +7,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
 
   // Database
-  DATABASE_URL: z.string().default('postgresql://codearena:codearena@localhost:5432/codearena'),
+  DATABASE_URL: z.string().default('postgresql://reporivals:reporivals@localhost:5432/reporivals'),
 
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),
@@ -16,8 +16,8 @@ const envSchema = z.object({
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_ACCESS_KEY: z.string().default('minioadmin'),
   S3_SECRET_KEY: z.string().default('minioadmin'),
-  S3_BUCKET_ARTIFACTS: z.string().default('codearena-artifacts'),
-  S3_BUCKET_UPLOADS: z.string().default('codearena-uploads'),
+  S3_BUCKET_ARTIFACTS: z.string().default('reporivals-artifacts'),
+  S3_BUCKET_UPLOADS: z.string().default('reporivals-uploads'),
 
   // Auth
   JWT_SECRET: z.string().default('development-jwt-secret-change-in-production'),

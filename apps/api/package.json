@@ -1,5 +1,5 @@
 {
-  "name": "@codearena/api",
+  "name": "@reporivals/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@codearena/shared": "workspace:*",
+    "@reporivals/shared": "workspace:*",
     "@fastify/cors": "^8.5.0",
     "@fastify/helmet": "^11.1.1",
     "@fastify/jwt": "^7.2.4",
@@ -36,8 +36,8 @@
   },
   "devDependencies": {
     "@types/ws": "^8.5.10",
-    "@codearena/eslint-config": "workspace:*",
-    "@codearena/tsconfig": "workspace:*",
+    "@reporivals/eslint-config": "workspace:*",
+    "@reporivals/tsconfig": "workspace:*",
     "@types/node": "^20.10.0",
     "@types/pg": "^8.10.9",
     "drizzle-kit": "^0.20.6",

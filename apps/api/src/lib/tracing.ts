@@ -25,7 +25,7 @@ export interface TracingConfig {
 // Default configuration
 const defaultConfig: TracingConfig = {
   enabled: env.NODE_ENV === 'production',
-  serviceName: 'codearena-api',
+  serviceName: 'reporivals-api',
   serviceVersion: process.env.npm_package_version || '0.1.0',
   environment: env.NODE_ENV,
   exporterType: env.NODE_ENV === 'production' ? 'otlp' : 'console',
@@ -250,7 +250,7 @@ export function injectTraceContext(span: SimpleSpan): Record<string, string> {
   const flags = config.sampleRate >= Math.random() ? '01' : '00';
   return {
     traceparent: `00-${span.traceId}-${span.spanId}-${flags}`,
-    tracestate: `codearena=${span.spanId}`,
+    tracestate: `reporivals=${span.spanId}`,
   };
 }
 
@@ -327,11 +327,11 @@ export const SemanticAttributes = {
   MESSAGING_DESTINATION: 'messaging.destination',
   MESSAGING_OPERATION: 'messaging.operation',
 
-  // CodeArena specific
-  USER_ID: 'codearena.user_id',
-  MATCH_ID: 'codearena.match_id',
-  CHALLENGE_ID: 'codearena.challenge_id',
-  SUBMISSION_ID: 'codearena.submission_id',
-  JUDGEMENT_RUN_ID: 'codearena.judgement_run_id',
-  TOURNAMENT_ID: 'codearena.tournament_id',
+  // RepoRivals specific
+  USER_ID: 'reporivals.user_id',
+  MATCH_ID: 'reporivals.match_id',
+  CHALLENGE_ID: 'reporivals.challenge_id',
+  SUBMISSION_ID: 'reporivals.submission_id',
+  JUDGEMENT_RUN_ID: 'reporivals.judgement_run_id',
+  TOURNAMENT_ID: 'reporivals.tournament_id',
 } as const;

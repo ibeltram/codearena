@@ -3,24 +3,24 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: codearena-postgres
+    container_name: reporivals-postgres
     environment:
-      POSTGRES_USER: codearena
-      POSTGRES_PASSWORD: codearena
-      POSTGRES_DB: codearena
+      POSTGRES_USER: reporivals
+      POSTGRES_PASSWORD: reporivals
+      POSTGRES_DB: reporivals
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U codearena"]
+      test: ["CMD-SHELL", "pg_isready -U reporivals"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: codearena-redis
+    container_name: reporivals-redis
     ports:
       - "6379:6379"
     volumes:
@@ -33,7 +33,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: codearena-minio
+    container_name: reporivals-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -58,10 +58,10 @@ services:
     entrypoint: >
       /bin/sh -c "
       mc alias set minio http://minio:9000 minioadmin minioadmin;
-      mc mb --ignore-existing minio/codearena-artifacts;
-      mc mb --ignore-existing minio/codearena-uploads;
-      mc mb --ignore-existing minio/codearena-logs;
-      mc mb --ignore-existing minio/codearena-templates;
+      mc mb --ignore-existing minio/reporivals-artifacts;
+      mc mb --ignore-existing minio/reporivals-uploads;
+      mc mb --ignore-existing minio/reporivals-logs;
+      mc mb --ignore-existing minio/reporivals-templates;
       echo 'Buckets created successfully';
       "
 

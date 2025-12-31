@@ -1,9 +1,9 @@
 {
-  "name": "codearena",
-  "displayName": "CodeArena",
+  "name": "reporivals",
+  "displayName": "RepoRivals",
   "description": "Competitive coding platform - join matches and submit directly from VS Code",
   "version": "0.1.0",
-  "publisher": "codearena",
+  "publisher": "reporivals",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -15,94 +15,94 @@
   "contributes": {
     "commands": [
       {
-        "command": "codearena.signIn",
-        "title": "CodeArena: Sign In",
+        "command": "reporivals.signIn",
+        "title": "RepoRivals: Sign In",
         "icon": "$(sign-in)"
       },
       {
-        "command": "codearena.signOut",
-        "title": "CodeArena: Sign Out",
+        "command": "reporivals.signOut",
+        "title": "RepoRivals: Sign Out",
         "icon": "$(sign-out)"
       },
       {
-        "command": "codearena.showAuthStatus",
-        "title": "CodeArena: Account"
+        "command": "reporivals.showAuthStatus",
+        "title": "RepoRivals: Account"
       },
       {
-        "command": "codearena.browseChallenges",
-        "title": "CodeArena: Browse Challenges"
+        "command": "reporivals.browseChallenges",
+        "title": "RepoRivals: Browse Challenges"
       },
       {
-        "command": "codearena.refreshChallenges",
-        "title": "CodeArena: Refresh Challenges",
+        "command": "reporivals.refreshChallenges",
+        "title": "RepoRivals: Refresh Challenges",
         "icon": "$(refresh)"
       },
       {
-        "command": "codearena.joinMatch",
-        "title": "CodeArena: Join Match"
+        "command": "reporivals.joinMatch",
+        "title": "RepoRivals: Join Match"
       },
       {
-        "command": "codearena.submit",
-        "title": "CodeArena: Submit"
+        "command": "reporivals.submit",
+        "title": "RepoRivals: Submit"
       },
       {
-        "command": "codearena.lockSubmission",
-        "title": "CodeArena: Lock Submission"
+        "command": "reporivals.lockSubmission",
+        "title": "RepoRivals: Lock Submission"
       },
       {
-        "command": "codearena.openMatchInWeb",
-        "title": "CodeArena: Open Match in Web"
+        "command": "reporivals.openMatchInWeb",
+        "title": "RepoRivals: Open Match in Web"
       },
       {
-        "command": "codearena.filterChallenges",
-        "title": "CodeArena: Filter by Category",
+        "command": "reporivals.filterChallenges",
+        "title": "RepoRivals: Filter by Category",
         "icon": "$(filter)"
       },
       {
-        "command": "codearena.openChallengeInWeb",
+        "command": "reporivals.openChallengeInWeb",
         "title": "Open in Web"
       },
       {
-        "command": "codearena.toggleGrouping",
+        "command": "reporivals.toggleGrouping",
         "title": "Toggle Grouping",
         "icon": "$(list-tree)"
       },
       {
-        "command": "codearena.showActiveMatchPanel",
-        "title": "CodeArena: Show Active Match"
+        "command": "reporivals.showActiveMatchPanel",
+        "title": "RepoRivals: Show Active Match"
       },
       {
-        "command": "codearena.setReady",
-        "title": "CodeArena: Ready for Match"
+        "command": "reporivals.setReady",
+        "title": "RepoRivals: Ready for Match"
       },
       {
-        "command": "codearena.forfeit",
-        "title": "CodeArena: Forfeit Match"
+        "command": "reporivals.forfeit",
+        "title": "RepoRivals: Forfeit Match"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codearena",
-          "title": "CodeArena",
+          "id": "reporivals",
+          "title": "RepoRivals",
           "icon": "resources/icon.svg"
         }
       ]
     },
     "views": {
-      "codearena": [
+      "reporivals": [
         {
-          "id": "codearena-challenges",
+          "id": "reporivals-challenges",
           "name": "Challenges",
-          "contextualTitle": "CodeArena Challenges"
+          "contextualTitle": "RepoRivals Challenges"
         },
         {
-          "id": "codearena-match",
+          "id": "reporivals-match",
           "name": "Active Match",
           "contextualTitle": "Current Match"
         },
         {
-          "id": "codearena-history",
+          "id": "reporivals-history",
           "name": "Recent Matches",
           "contextualTitle": "Match History"
         }
@@ -110,47 +110,47 @@
     },
     "viewsWelcome": [
       {
-        "view": "codearena-challenges",
-        "contents": "Welcome to CodeArena!\n\nSign in to browse challenges and compete.\n\n[Sign In](command:codearena.signIn)"
+        "view": "reporivals-challenges",
+        "contents": "Welcome to RepoRivals!\n\nSign in to browse challenges and compete.\n\n[Sign In](command:reporivals.signIn)"
       },
       {
-        "view": "codearena-match",
-        "contents": "No active match.\n\nJoin a challenge to start competing!\n\n[Browse Challenges](command:codearena.browseChallenges)"
+        "view": "reporivals-match",
+        "contents": "No active match.\n\nJoin a challenge to start competing!\n\n[Browse Challenges](command:reporivals.browseChallenges)"
       },
       {
-        "view": "codearena-history",
+        "view": "reporivals-history",
         "contents": "No recent matches.\n\nComplete your first match to see history here."
       }
     ],
     "configuration": {
-      "title": "CodeArena",
+      "title": "RepoRivals",
       "properties": {
-        "codearena.apiUrl": {
+        "reporivals.apiUrl": {
           "type": "string",
-          "default": "https://api.codearena.dev",
-          "description": "CodeArena API server URL"
+          "default": "https://api.reporivals.dev",
+          "description": "RepoRivals API server URL"
         },
-        "codearena.webUrl": {
+        "reporivals.webUrl": {
           "type": "string",
-          "default": "https://codearena.dev",
-          "description": "CodeArena web application URL"
+          "default": "https://reporivals.dev",
+          "description": "RepoRivals web application URL"
         },
-        "codearena.autoSubmit": {
+        "reporivals.autoSubmit": {
           "type": "boolean",
           "default": false,
           "description": "Automatically submit when match time expires (if not already submitted)"
         },
-        "codearena.showTimerInStatusBar": {
+        "reporivals.showTimerInStatusBar": {
           "type": "boolean",
           "default": true,
           "description": "Show match timer in the status bar during active matches"
         },
-        "codearena.timerWarningMinutes": {
+        "reporivals.timerWarningMinutes": {
           "type": "number",
           "default": 5,
           "description": "Show warning notification when this many minutes remain"
         },
-        "codearena.excludePatterns": {
+        "reporivals.excludePatterns": {
           "type": "array",
           "default": [
             "node_modules/**",
@@ -162,7 +162,7 @@
           ],
           "description": "File patterns to exclude from submissions"
         },
-        "codearena.maxSubmissionSizeMB": {
+        "reporivals.maxSubmissionSizeMB": {
           "type": "number",
           "default": 50,
           "description": "Maximum submission size in MB"
@@ -172,71 +172,71 @@
     "menus": {
       "view/title": [
         {
-          "command": "codearena.filterChallenges",
-          "when": "view == codearena-challenges",
+          "command": "reporivals.filterChallenges",
+          "when": "view == reporivals-challenges",
           "group": "navigation@1"
         },
         {
-          "command": "codearena.refreshChallenges",
-          "when": "view == codearena-challenges",
+          "command": "reporivals.refreshChallenges",
+          "when": "view == reporivals-challenges",
           "group": "navigation@2"
         },
         {
-          "command": "codearena.toggleGrouping",
-          "when": "view == codearena-challenges",
+          "command": "reporivals.toggleGrouping",
+          "when": "view == reporivals-challenges",
           "group": "navigation@3"
         },
         {
-          "command": "codearena.signIn",
-          "when": "view == codearena-challenges && !codearena.isAuthenticated",
+          "command": "reporivals.signIn",
+          "when": "view == reporivals-challenges && !reporivals.isAuthenticated",
           "group": "navigation@4"
         }
       ],
       "view/item/context": [
         {
-          "command": "codearena.joinMatch",
-          "when": "view == codearena-challenges && viewItem == challenge",
+          "command": "reporivals.joinMatch",
+          "when": "view == reporivals-challenges && viewItem == challenge",
           "group": "inline"
         },
         {
-          "command": "codearena.openChallengeInWeb",
-          "when": "view == codearena-challenges && viewItem == challenge",
+          "command": "reporivals.openChallengeInWeb",
+          "when": "view == reporivals-challenges && viewItem == challenge",
           "group": "1_actions"
         },
         {
-          "command": "codearena.joinMatch",
-          "when": "view == codearena-challenges && viewItem == challenge",
+          "command": "reporivals.joinMatch",
+          "when": "view == reporivals-challenges && viewItem == challenge",
           "group": "1_actions"
         }
       ],
       "commandPalette": [
         {
-          "command": "codearena.submit",
-          "when": "codearena.hasActiveMatch && !codearena.isSubmissionLocked"
+          "command": "reporivals.submit",
+          "when": "reporivals.hasActiveMatch && !reporivals.isSubmissionLocked"
         },
         {
-          "command": "codearena.lockSubmission",
-          "when": "codearena.hasActiveMatch && codearena.hasSubmitted && !codearena.isSubmissionLocked"
+          "command": "reporivals.lockSubmission",
+          "when": "reporivals.hasActiveMatch && reporivals.hasSubmitted && !reporivals.isSubmissionLocked"
         },
         {
-          "command": "codearena.openMatchInWeb",
-          "when": "codearena.hasActiveMatch"
+          "command": "reporivals.openMatchInWeb",
+          "when": "reporivals.hasActiveMatch"
         },
         {
-          "command": "codearena.openChallengeInWeb",
+          "command": "reporivals.openChallengeInWeb",
           "when": "false"
         },
         {
-          "command": "codearena.showActiveMatchPanel",
-          "when": "codearena.hasActiveMatch"
+          "command": "reporivals.showActiveMatchPanel",
+          "when": "reporivals.hasActiveMatch"
         },
         {
-          "command": "codearena.setReady",
-          "when": "codearena.hasActiveMatch"
+          "command": "reporivals.setReady",
+          "when": "reporivals.hasActiveMatch"
         },
         {
-          "command": "codearena.forfeit",
-          "when": "codearena.hasActiveMatch"
+          "command": "reporivals.forfeit",
+          "when": "reporivals.hasActiveMatch"
         }
       ]
     }
@@ -253,8 +253,8 @@
     "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
-    "@codearena/eslint-config": "workspace:*",
-    "@codearena/tsconfig": "workspace:*",
+    "@reporivals/eslint-config": "workspace:*",
+    "@reporivals/tsconfig": "workspace:*",
     "@types/glob": "^8.1.0",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.10.0",
@@ -268,6 +268,6 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@codearena/shared": "workspace:*"
+    "@reporivals/shared": "workspace:*"
   }
 }

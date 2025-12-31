@@ -108,7 +108,7 @@ export class MatchProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
           'Challenge',
           'code',
           {
-            command: 'codearena.openMatchInWeb',
+            command: 'reporivals.openMatchInWeb',
             title: 'Open in Browser',
           }
         )
@@ -169,13 +169,13 @@ export class MatchProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
       if (this.match.status === 'in_progress') {
         if (!this.match.mySubmission) {
           const submitItem = new MatchInfoItem('Submit Code', 'Click to submit', 'cloud-upload', {
-            command: 'codearena.submit',
+            command: 'reporivals.submit',
             title: 'Submit',
           });
           items.push(submitItem);
         } else if (!this.match.mySubmission.lockedAt) {
           const lockItem = new MatchInfoItem('Lock Submission', 'Click to lock', 'lock', {
-            command: 'codearena.lockSubmission',
+            command: 'reporivals.lockSubmission',
             title: 'Lock Submission',
           });
           items.push(lockItem);

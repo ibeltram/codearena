@@ -16,10 +16,10 @@ import { env } from './env';
 
 // Bucket names
 export const BUCKETS = {
-  ARTIFACTS: 'codearena-artifacts',
-  UPLOADS: 'codearena-uploads',
-  LOGS: 'codearena-logs',
-  TEMPLATES: 'codearena-templates',
+  ARTIFACTS: 'reporivals-artifacts',
+  UPLOADS: 'reporivals-uploads',
+  LOGS: 'reporivals-logs',
+  TEMPLATES: 'reporivals-templates',
 } as const;
 
 export type BucketName = typeof BUCKETS[keyof typeof BUCKETS];

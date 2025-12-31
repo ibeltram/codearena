@@ -59,7 +59,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         // Clear refresh token from localStorage
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('codearena-refresh-token');
+          localStorage.removeItem('reporivals-refresh-token');
         }
         set({
           user: null,
@@ -71,7 +71,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'codearena-auth',
+      name: 'reporivals-auth',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         accessToken: state.accessToken,

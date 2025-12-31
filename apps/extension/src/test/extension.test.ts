@@ -1,5 +1,5 @@
 /**
- * CodeArena Extension Integration Tests
+ * RepoRivals Extension Integration Tests
  *
  * These tests require the VS Code Extension Test Runner.
  * Run with: npm run test:vscode
@@ -12,15 +12,15 @@ import * as vscode from 'vscode';
 declare const suite: Mocha.SuiteFunction;
 declare const test: Mocha.TestFunction;
 
-suite('CodeArena Extension Test Suite', () => {
+suite('RepoRivals Extension Test Suite', () => {
   vscode.window.showInformationMessage('Start all tests.');
 
   test('Extension should be present', () => {
-    assert.ok(vscode.extensions.getExtension('codearena.codearena'));
+    assert.ok(vscode.extensions.getExtension('reporivals.reporivals'));
   });
 
   test('Extension should activate', async () => {
-    const extension = vscode.extensions.getExtension('codearena.codearena');
+    const extension = vscode.extensions.getExtension('reporivals.reporivals');
     if (extension) {
       await extension.activate();
       assert.strictEqual(extension.isActive, true);
@@ -31,13 +31,13 @@ suite('CodeArena Extension Test Suite', () => {
     const commands = await vscode.commands.getCommands(true);
 
     const expectedCommands = [
-      'codearena.signIn',
-      'codearena.signOut',
-      'codearena.browseChallenges',
-      'codearena.joinMatch',
-      'codearena.submit',
-      'codearena.lockSubmission',
-      'codearena.openMatchInWeb',
+      'reporivals.signIn',
+      'reporivals.signOut',
+      'reporivals.browseChallenges',
+      'reporivals.joinMatch',
+      'reporivals.submit',
+      'reporivals.lockSubmission',
+      'reporivals.openMatchInWeb',
     ];
 
     for (const cmd of expectedCommands) {

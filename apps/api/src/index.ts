@@ -83,7 +83,7 @@ async function start() {
 
   try {
     await app.listen({ port: PORT, host: HOST });
-    logger.info(`🚀 CodeArena API running on http://${HOST}:${PORT}`);
+    logger.info(`🚀 RepoRivals API running on http://${HOST}:${PORT}`);
     logger.info(`Environment: ${env.NODE_ENV}`);
   } catch (err) {
     logger.fatal({ err }, 'Failed to start server');

@@ -6,7 +6,7 @@ import { Match, MatchParticipant } from '../types';
  */
 export class ActiveMatchPanel {
   public static currentPanel: ActiveMatchPanel | undefined;
-  private static readonly viewType = 'codearena.activeMatch';
+  private static readonly viewType = 'reporivals.activeMatch';
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
@@ -54,7 +54,7 @@ export class ActiveMatchPanel {
     // Create a new panel
     const panel = vscode.window.createWebviewPanel(
       ActiveMatchPanel.viewType,
-      'CodeArena Match',
+      'RepoRivals Match',
       column || vscode.ViewColumn.Two,
       {
         enableScripts: true,
@@ -111,19 +111,19 @@ export class ActiveMatchPanel {
   private handleMessage(message: any): void {
     switch (message.command) {
       case 'submit':
-        vscode.commands.executeCommand('codearena.submit');
+        vscode.commands.executeCommand('reporivals.submit');
         break;
       case 'lock':
-        vscode.commands.executeCommand('codearena.lockSubmission');
+        vscode.commands.executeCommand('reporivals.lockSubmission');
         break;
       case 'forfeit':
         this.confirmForfeit();
         break;
       case 'openInWeb':
-        vscode.commands.executeCommand('codearena.openMatchInWeb');
+        vscode.commands.executeCommand('reporivals.openMatchInWeb');
         break;
       case 'ready':
-        vscode.commands.executeCommand('codearena.setReady');
+        vscode.commands.executeCommand('reporivals.setReady');
         break;
     }
   }
@@ -139,7 +139,7 @@ export class ActiveMatchPanel {
     );
 
     if (result === 'Forfeit') {
-      vscode.commands.executeCommand('codearena.forfeit');
+      vscode.commands.executeCommand('reporivals.forfeit');
     }
   }
 
@@ -169,7 +169,7 @@ export class ActiveMatchPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>CodeArena Match</title>
+  <title>RepoRivals Match</title>
   <style>
     :root {
       --vscode-font: var(--vscode-font-family);
@@ -667,7 +667,7 @@ export class ActiveMatchPanel {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
-  <title>CodeArena Match</title>
+  <title>RepoRivals Match</title>
   <style>
     body {
       font-family: var(--vscode-font-family);

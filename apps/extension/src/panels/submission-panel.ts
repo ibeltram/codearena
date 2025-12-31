@@ -6,7 +6,7 @@ import { SubmissionSummary, FileEntry, UploadProgress } from '../services';
  */
 export class SubmissionPanel {
   public static currentPanel: SubmissionPanel | undefined;
-  private static readonly viewType = 'codearenaSubmission';
+  private static readonly viewType = 'reporivalsSubmission';
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
@@ -48,7 +48,7 @@ export class SubmissionPanel {
     // Create a new panel
     const panel = vscode.window.createWebviewPanel(
       SubmissionPanel.viewType,
-      'Submit to CodeArena',
+      'Submit to RepoRivals',
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -149,7 +149,7 @@ export class SubmissionPanel {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Submit to CodeArena</title>
+  <title>Submit to RepoRivals</title>
   <style>
     :root {
       --bg-primary: var(--vscode-editor-background);
@@ -409,7 +409,7 @@ export class SubmissionPanel {
 <body>
   <h1>
     <span class="icon">📦</span>
-    Submit to CodeArena
+    Submit to RepoRivals
   </h1>
 
   <div class="summary-card">
@@ -574,7 +574,7 @@ export class SubmissionPanel {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Submit to CodeArena</title>
+  <title>Submit to RepoRivals</title>
   <style>
     body {
       font-family: var(--vscode-font-family);

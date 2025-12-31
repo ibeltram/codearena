@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Challenges - CodeArena',
+  title: 'Challenges - RepoRivals',
   description: 'Browse and compete in coding challenges',
 };
 

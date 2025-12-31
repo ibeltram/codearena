@@ -40,7 +40,7 @@ export default function LoginPage() {
 
       // Store refresh token separately (could use httpOnly cookie in production)
       if (refreshToken) {
-        localStorage.setItem('codearena-refresh-token', refreshToken);
+        localStorage.setItem('reporivals-refresh-token', refreshToken);
       }
 
       // Fetch user info
@@ -106,7 +106,7 @@ export default function LoginPage() {
               <Swords className="h-8 w-8 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl">Welcome to CodeArena</CardTitle>
+          <CardTitle className="text-2xl">Welcome to RepoRivals</CardTitle>
           <CardDescription>
             Sign in to compete, earn rewards, and climb the leaderboard
           </CardDescription>

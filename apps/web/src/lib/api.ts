@@ -16,7 +16,7 @@ async function fetchApi<T>(
 
   // Add auth token if available (client-side only)
   if (typeof window !== 'undefined') {
-    const authData = localStorage.getItem('codearena-auth');
+    const authData = localStorage.getItem('reporivals-auth');
     if (authData) {
       try {
         const { state } = JSON.parse(authData);

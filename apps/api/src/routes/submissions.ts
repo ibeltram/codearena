@@ -2021,7 +2021,7 @@ async function fetchGitHubRepoMetadata(
   //   headers: {
   //     Authorization: accessToken ? `Bearer ${accessToken}` : '',
   //     Accept: 'application/vnd.github.v3+json',
-  //     'User-Agent': 'CodeArena',
+  //     'User-Agent': 'RepoRivals',
   //   },
   // });
 
@@ -2051,7 +2051,7 @@ async function fetchLatestCommitSha(
   //     headers: {
   //       Authorization: accessToken ? `Bearer ${accessToken}` : '',
   //       Accept: 'application/vnd.github.v3+json',
-  //       'User-Agent': 'CodeArena',
+  //       'User-Agent': 'RepoRivals',
   //     },
   //   }
   // );

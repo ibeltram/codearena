@@ -16,7 +16,7 @@ export class StatusBarService {
       vscode.StatusBarAlignment.Right,
       100
     );
-    this.statusBarItem.command = 'codearena.focusMatchView';
+    this.statusBarItem.command = 'reporivals.focusMatchView';
   }
 
   /**
@@ -54,7 +54,7 @@ export class StatusBarService {
       return;
     }
 
-    const config = vscode.workspace.getConfiguration('codearena');
+    const config = vscode.workspace.getConfiguration('reporivals');
     const showTimer = config.get<boolean>('showTimerInStatusBar', true);
 
     if (!showTimer) {
@@ -84,12 +84,12 @@ export class StatusBarService {
 
     switch (this.match.status) {
       case 'open':
-        text = `${icon} CodeArena: Waiting for opponent...`;
+        text = `${icon} RepoRivals: Waiting for opponent...`;
         tooltip = 'Waiting for an opponent to join the match';
         break;
 
       case 'matched':
-        text = `${icon} CodeArena: Matched! Get ready`;
+        text = `${icon} RepoRivals: Matched! Get ready`;
         tooltip = 'Opponent found! Match is about to start';
         backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         break;
@@ -103,7 +103,7 @@ export class StatusBarService {
 
           // Warning colors when time is low
           const warningMinutes = vscode.workspace
-            .getConfiguration('codearena')
+            .getConfiguration('reporivals')
             .get<number>('timerWarningMinutes', 5);
 
           if (remaining <= warningMinutes * 60) {
@@ -113,39 +113,39 @@ export class StatusBarService {
             if (!this.warningShown && remaining <= warningMinutes * 60 && remaining > 0) {
               this.warningShown = true;
               vscode.window.showWarningMessage(
-                `CodeArena: Only ${Math.ceil(remaining / 60)} minutes remaining!`,
+                `RepoRivals: Only ${Math.ceil(remaining / 60)} minutes remaining!`,
                 'Submit Now'
               ).then((action) => {
                 if (action === 'Submit Now') {
-                  vscode.commands.executeCommand('codearena.submit');
+                  vscode.commands.executeCommand('reporivals.submit');
                 }
               });
             }
           }
         } else {
-          text = `${icon} CodeArena: In Progress`;
+          text = `${icon} RepoRivals: In Progress`;
           tooltip = `Match in progress\nChallenge: ${this.match.challengeTitle}`;
         }
         break;
 
       case 'submission_locked':
-        text = `${icon} CodeArena: Locked`;
+        text = `${icon} RepoRivals: Locked`;
         tooltip = 'Submissions are locked. Waiting for judging...';
         break;
 
       case 'judging':
-        text = `${icon} CodeArena: Judging...`;
+        text = `${icon} RepoRivals: Judging...`;
         tooltip = 'Your submission is being judged';
         break;
 
       case 'finalized':
-        text = `${icon} CodeArena: Complete`;
+        text = `${icon} RepoRivals: Complete`;
         tooltip = 'Match complete! Click to view results';
         break;
 
       default:
-        text = `${icon} CodeArena`;
-        tooltip = 'CodeArena match active';
+        text = `${icon} RepoRivals`;
+        tooltip = 'RepoRivals match active';
     }
 
     return { text, tooltip, backgroundColor };
@@ -193,21 +193,21 @@ export class StatusBarService {
   }
 
   private onTimeExpired(): void {
-    const config = vscode.workspace.getConfiguration('codearena');
+    const config = vscode.workspace.getConfiguration('reporivals');
     const autoSubmit = config.get<boolean>('autoSubmit', false);
 
     if (autoSubmit && this.match && !this.match.mySubmission) {
       vscode.window.showInformationMessage(
-        'CodeArena: Time expired! Auto-submitting your code...'
+        'RepoRivals: Time expired! Auto-submitting your code...'
       );
-      vscode.commands.executeCommand('codearena.submit');
+      vscode.commands.executeCommand('reporivals.submit');
     } else {
       vscode.window.showWarningMessage(
-        'CodeArena: Time has expired!',
+        'RepoRivals: Time has expired!',
         'View Match'
       ).then((action) => {
         if (action === 'View Match') {
-          vscode.commands.executeCommand('codearena.focusMatchView');
+          vscode.commands.executeCommand('reporivals.focusMatchView');
         }
       });
     }

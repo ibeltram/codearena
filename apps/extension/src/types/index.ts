@@ -1,5 +1,5 @@
 /**
- * CodeArena Extension Types
+ * RepoRivals Extension Types
  */
 
 export interface Challenge {

@@ -1,5 +1,5 @@
 {
-  "extends": "@codearena/tsconfig/base.json",
+  "extends": "@reporivals/tsconfig/base.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src"

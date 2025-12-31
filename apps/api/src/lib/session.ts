@@ -395,7 +395,7 @@ export function getDeviceInfo(request: FastifyRequest): {
   let deviceType = 'web';
 
   if (userAgent) {
-    if (userAgent.includes('VSCode') || userAgent.includes('CodeArena-Extension')) {
+    if (userAgent.includes('VSCode') || userAgent.includes('RepoRivals-Extension')) {
       deviceType = 'vscode';
     } else if (/mobile|android|iphone|ipad/i.test(userAgent)) {
       deviceType = 'mobile';

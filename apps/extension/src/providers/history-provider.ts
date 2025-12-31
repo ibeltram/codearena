@@ -19,7 +19,7 @@ export class HistoryMatchItem extends vscode.TreeItem {
 
     // Command to view match details in browser
     this.command = {
-      command: 'codearena.viewMatchDetails',
+      command: 'reporivals.viewMatchDetails',
       title: 'View Match Details',
       arguments: [match],
     };

@@ -10,7 +10,7 @@ async function seed() {
     const [adminUser] = await db
       .insert(users)
       .values({
-        email: 'admin@codearena.dev',
+        email: 'admin@reporivals.dev',
         displayName: 'Admin',
         roles: ['admin', 'user'],
         isVerified: true,

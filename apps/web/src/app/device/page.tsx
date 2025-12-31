@@ -104,7 +104,7 @@ export default function DevicePage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <MonitorSmartphone className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Sign in to CodeArena</CardTitle>
+          <CardTitle className="text-2xl">Sign in to RepoRivals</CardTitle>
           <CardDescription>
             Enter the code displayed in your VS Code extension to authorize this device.
           </CardDescription>
@@ -175,7 +175,7 @@ export default function DevicePage() {
                 <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                   <li>Open VS Code</li>
                   <li>Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P)</li>
-                  <li>Run &quot;CodeArena: Sign In&quot;</li>
+                  <li>Run &quot;RepoRivals: Sign In&quot;</li>
                   <li>Copy the 8-character code shown</li>
                 </ol>
               </div>

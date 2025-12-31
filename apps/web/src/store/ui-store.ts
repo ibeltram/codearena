@@ -37,7 +37,7 @@ export const useUIStore = create<UIState>()(
         set({ theme }),
     }),
     {
-      name: 'codearena-ui',
+      name: 'reporivals-ui',
       storage: createJSONStorage(() => localStorage),
       // Don't persist sidebarOpen state - it should default to closed on mobile
       partialize: (state) => ({

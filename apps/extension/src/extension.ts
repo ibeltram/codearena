@@ -21,7 +21,7 @@ let currentUserId: string | null = null;
  * Get extension configuration
  */
 function getConfig(): ExtensionConfig {
-  const config = vscode.workspace.getConfiguration('codearena');
+  const config = vscode.workspace.getConfiguration('reporivals');
   return {
     apiUrl: config.get<string>('apiUrl', 'http://localhost:3002'),
     webUrl: config.get<string>('webUrl', 'http://localhost:3001'),
@@ -45,9 +45,9 @@ function getConfig(): ExtensionConfig {
  */
 function registerCommands(context: vscode.ExtensionContext): void {
   // Sign In - Now uses AuthService device code flow
-  const signIn = vscode.commands.registerCommand('codearena.signIn', async () => {
+  const signIn = vscode.commands.registerCommand('reporivals.signIn', async () => {
     if (isAuthenticated) {
-      vscode.window.showInformationMessage('CodeArena: You are already signed in.');
+      vscode.window.showInformationMessage('RepoRivals: You are already signed in.');
       return;
     }
 
@@ -63,19 +63,19 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
 
       // Refresh challenges
-      vscode.commands.executeCommand('codearena.refreshChallenges');
+      vscode.commands.executeCommand('reporivals.refreshChallenges');
     }
   });
 
   // Sign Out - Now uses AuthService
-  const signOut = vscode.commands.registerCommand('codearena.signOut', async () => {
+  const signOut = vscode.commands.registerCommand('reporivals.signOut', async () => {
     if (!isAuthenticated) {
-      vscode.window.showInformationMessage('CodeArena: You are not signed in.');
+      vscode.window.showInformationMessage('RepoRivals: You are not signed in.');
       return;
     }
 
     const confirm = await vscode.window.showWarningMessage(
-      'Are you sure you want to sign out of CodeArena?',
+      'Are you sure you want to sign out of RepoRivals?',
       { modal: true },
       'Sign Out'
     );
@@ -94,15 +94,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
       historyProvider.setMatches([]);
       statusBarService.hide();
 
-      vscode.window.showInformationMessage('CodeArena: You have been signed out.');
+      vscode.window.showInformationMessage('RepoRivals: You have been signed out.');
     }
   });
 
   // Show Auth Status - New command for account options
-  const showAuthStatus = vscode.commands.registerCommand('codearena.showAuthStatus', async () => {
+  const showAuthStatus = vscode.commands.registerCommand('reporivals.showAuthStatus', async () => {
     const tokens = await authService.getStoredTokens();
     if (!tokens) {
-      vscode.window.showInformationMessage('CodeArena: Not signed in.');
+      vscode.window.showInformationMessage('RepoRivals: Not signed in.');
       return;
     }
 
@@ -113,14 +113,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
           description: tokens.userEmail,
           detail: 'Currently signed in',
         },
-        { label: '$(sign-out) Sign Out', description: 'Sign out of CodeArena' },
+        { label: '$(sign-out) Sign Out', description: 'Sign out of RepoRivals' },
         { label: '$(globe) View Profile', description: 'Open your profile in browser' },
       ],
-      { title: 'CodeArena Account' }
+      { title: 'RepoRivals Account' }
     );
 
     if (action?.label.includes('Sign Out')) {
-      vscode.commands.executeCommand('codearena.signOut');
+      vscode.commands.executeCommand('reporivals.signOut');
     } else if (action?.label.includes('View Profile')) {
       const config = getConfig();
       vscode.env.openExternal(vscode.Uri.parse(`${config.webUrl}/profile/${tokens.userId}`));
@@ -128,14 +128,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
   });
 
   // Browse Challenges
-  const browseChallenges = vscode.commands.registerCommand('codearena.browseChallenges', () => {
+  const browseChallenges = vscode.commands.registerCommand('reporivals.browseChallenges', () => {
     // Focus the challenges view
-    vscode.commands.executeCommand('codearena-challenges.focus');
+    vscode.commands.executeCommand('reporivals-challenges.focus');
   });
 
   // Show Challenge Details
   const showChallengeDetails = vscode.commands.registerCommand(
-    'codearena.showChallengeDetails',
+    'reporivals.showChallengeDetails',
     async (challenge: Challenge) => {
       // Show challenge details in a quick pick or webview
       const actions = await vscode.window.showQuickPick(
@@ -150,7 +150,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       );
 
       if (actions?.label.includes('Join Match')) {
-        vscode.commands.executeCommand('codearena.joinMatch', challenge);
+        vscode.commands.executeCommand('reporivals.joinMatch', challenge);
       } else if (actions?.label.includes('View in Browser')) {
         const config = getConfig();
         vscode.env.openExternal(
@@ -162,22 +162,22 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Join Match
   const joinMatch = vscode.commands.registerCommand(
-    'codearena.joinMatch',
+    'reporivals.joinMatch',
     async (challenge?: Challenge) => {
       if (!isAuthenticated) {
         const action = await vscode.window.showWarningMessage(
-          'CodeArena: You need to sign in to join a match.',
+          'RepoRivals: You need to sign in to join a match.',
           'Sign In'
         );
         if (action === 'Sign In') {
-          vscode.commands.executeCommand('codearena.signIn');
+          vscode.commands.executeCommand('reporivals.signIn');
         }
         return;
       }
 
       if (!challenge) {
         vscode.window.showInformationMessage(
-          'CodeArena: Please select a challenge from the Challenges view.'
+          'RepoRivals: Please select a challenge from the Challenges view.'
         );
         return;
       }
@@ -185,12 +185,12 @@ function registerCommands(context: vscode.ExtensionContext): void {
       // Check if already in a match
       if (matchService.getCurrentMatch()) {
         const action = await vscode.window.showWarningMessage(
-          'CodeArena: You already have an active match. Would you like to view it?',
+          'RepoRivals: You already have an active match. Would you like to view it?',
           'View Match',
           'Cancel'
         );
         if (action === 'View Match') {
-          vscode.commands.executeCommand('codearena.showActiveMatchPanel');
+          vscode.commands.executeCommand('reporivals.showActiveMatchPanel');
         }
         return;
       }
@@ -206,20 +206,20 @@ function registerCommands(context: vscode.ExtensionContext): void {
         vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: `CodeArena: Joining match for ${challenge.title}...`,
+            title: `RepoRivals: Joining match for ${challenge.title}...`,
             cancellable: false,
           },
           async () => {
             const match = await matchService.joinMatch(challenge.id);
             if (match) {
               // Update context for command visibility
-              await vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', true);
+              await vscode.commands.executeCommand('setContext', 'reporivals.hasActiveMatch', true);
 
               // Show the active match panel
-              vscode.commands.executeCommand('codearena.showActiveMatchPanel');
+              vscode.commands.executeCommand('reporivals.showActiveMatchPanel');
 
               vscode.window.showInformationMessage(
-                `CodeArena: Joined match! ${match.status === 'open' ? 'Waiting for opponent...' : 'Match found!'}`
+                `RepoRivals: Joined match! ${match.status === 'open' ? 'Waiting for opponent...' : 'Match found!'}`
               );
             }
           }
@@ -229,10 +229,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
   );
 
   // Submit
-  const submit = vscode.commands.registerCommand('codearena.submit', async () => {
+  const submit = vscode.commands.registerCommand('reporivals.submit', async () => {
     const match = matchProvider.getMatch();
     if (!match || match.status !== 'in_progress') {
-      vscode.window.showWarningMessage('CodeArena: No active match to submit to.');
+      vscode.window.showWarningMessage('RepoRivals: No active match to submit to.');
       return;
     }
 
@@ -240,7 +240,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
     if (match.mySubmission?.lockedAt) {
       const lockedTime = new Date(match.mySubmission.lockedAt).toLocaleString();
       vscode.window.showWarningMessage(
-        `CodeArena: Your submission was locked at ${lockedTime}. You cannot submit again.`
+        `RepoRivals: Your submission was locked at ${lockedTime}. You cannot submit again.`
       );
       return;
     }
@@ -248,7 +248,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
     // Get workspace folder
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
-      vscode.window.showWarningMessage('CodeArena: Please open a workspace folder first.');
+      vscode.window.showWarningMessage('RepoRivals: Please open a workspace folder first.');
       return;
     }
 
@@ -273,7 +273,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'CodeArena: Scanning workspace...',
+          title: 'RepoRivals: Scanning workspace...',
           cancellable: false,
         },
         async () => {
@@ -305,11 +305,11 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
               if (submissionId) {
                 vscode.window.showInformationMessage(
-                  `CodeArena: Submission complete! ${summary.files.filter((f) => !f.isExcluded).length} files uploaded.`
+                  `RepoRivals: Submission complete! ${summary.files.filter((f) => !f.isExcluded).length} files uploaded.`
                 );
 
                 // Update context
-                await vscode.commands.executeCommand('setContext', 'codearena.hasSubmitted', true);
+                await vscode.commands.executeCommand('setContext', 'reporivals.hasSubmitted', true);
 
                 // Close the panel after success
                 if (SubmissionPanel.currentPanel) {
@@ -318,7 +318,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
               }
             } catch (error) {
               vscode.window.showErrorMessage(
-                `CodeArena: Submission failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+                `RepoRivals: Submission failed: ${error instanceof Error ? error.message : 'Unknown error'}`
               );
             }
           },
@@ -337,37 +337,37 @@ function registerCommands(context: vscode.ExtensionContext): void {
       );
     } catch (error) {
       vscode.window.showErrorMessage(
-        `CodeArena: Failed to scan workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `RepoRivals: Failed to scan workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   });
 
   // Lock Submission
-  const lockSubmission = vscode.commands.registerCommand('codearena.lockSubmission', async () => {
+  const lockSubmission = vscode.commands.registerCommand('reporivals.lockSubmission', async () => {
     const match = matchProvider.getMatch();
 
     // Check if there's an active match
     if (!match) {
-      vscode.window.showWarningMessage('CodeArena: No active match.');
+      vscode.window.showWarningMessage('RepoRivals: No active match.');
       return;
     }
 
     // Check if match is in progress
     if (match.status !== 'in_progress') {
-      vscode.window.showWarningMessage('CodeArena: Match is not in progress.');
+      vscode.window.showWarningMessage('RepoRivals: Match is not in progress.');
       return;
     }
 
     // Check if there's a submission to lock
     if (!match.mySubmission) {
-      vscode.window.showWarningMessage('CodeArena: You need to submit first before locking.');
+      vscode.window.showWarningMessage('RepoRivals: You need to submit first before locking.');
       return;
     }
 
     // Check if already locked
     if (match.mySubmission.lockedAt) {
       const lockedTime = new Date(match.mySubmission.lockedAt).toLocaleString();
-      vscode.window.showInformationMessage(`CodeArena: Your submission was locked at ${lockedTime}.`);
+      vscode.window.showInformationMessage(`RepoRivals: Your submission was locked at ${lockedTime}.`);
       return;
     }
 
@@ -389,7 +389,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: 'CodeArena: Locking submission...',
+            title: 'RepoRivals: Locking submission...',
             cancellable: false,
           },
           async () => {
@@ -399,7 +399,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
               const lockedTime = new Date(result.lockedAt).toLocaleString();
 
               // Update context to disable submit command
-              await vscode.commands.executeCommand('setContext', 'codearena.isSubmissionLocked', true);
+              await vscode.commands.executeCommand('setContext', 'reporivals.isSubmissionLocked', true);
 
               // Update the active match panel if open
               if (ActiveMatchPanel.currentPanel) {
@@ -408,24 +408,24 @@ function registerCommands(context: vscode.ExtensionContext): void {
               }
 
               vscode.window.showInformationMessage(
-                `CodeArena: Submission locked at ${lockedTime}. Good luck! 🔒`
+                `RepoRivals: Submission locked at ${lockedTime}. Good luck! 🔒`
               );
             }
           }
         );
       } catch (error) {
         vscode.window.showErrorMessage(
-          `CodeArena: Failed to lock submission: ${error instanceof Error ? error.message : 'Unknown error'}`
+          `RepoRivals: Failed to lock submission: ${error instanceof Error ? error.message : 'Unknown error'}`
         );
       }
     }
   });
 
   // Open Match in Web
-  const openMatchInWeb = vscode.commands.registerCommand('codearena.openMatchInWeb', () => {
+  const openMatchInWeb = vscode.commands.registerCommand('reporivals.openMatchInWeb', () => {
     const match = matchProvider.getMatch();
     if (!match) {
-      vscode.window.showWarningMessage('CodeArena: No active match.');
+      vscode.window.showWarningMessage('RepoRivals: No active match.');
       return;
     }
 
@@ -435,7 +435,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // View Match Details (from history)
   const viewMatchDetails = vscode.commands.registerCommand(
-    'codearena.viewMatchDetails',
+    'reporivals.viewMatchDetails',
     (match: MatchHistoryItem) => {
       const config = getConfig();
       vscode.env.openExternal(vscode.Uri.parse(`${config.webUrl}/matches/${match.id}`));
@@ -443,12 +443,12 @@ function registerCommands(context: vscode.ExtensionContext): void {
   );
 
   // Focus Match View
-  const focusMatchView = vscode.commands.registerCommand('codearena.focusMatchView', () => {
-    vscode.commands.executeCommand('codearena-match.focus');
+  const focusMatchView = vscode.commands.registerCommand('reporivals.focusMatchView', () => {
+    vscode.commands.executeCommand('reporivals-match.focus');
   });
 
   // Refresh Challenges
-  const refreshChallenges = vscode.commands.registerCommand('codearena.refreshChallenges', async () => {
+  const refreshChallenges = vscode.commands.registerCommand('reporivals.refreshChallenges', async () => {
     challengesProvider.setLoading(true);
 
     try {
@@ -489,7 +489,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
   });
 
   // Filter Challenges by Category
-  const filterChallenges = vscode.commands.registerCommand('codearena.filterChallenges', async () => {
+  const filterChallenges = vscode.commands.registerCommand('reporivals.filterChallenges', async () => {
     const currentFilter = challengesProvider.getCategoryFilter();
     const categories = [
       { label: '$(list-flat) All Categories', category: null, picked: currentFilter === null },
@@ -512,7 +512,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Open Challenge in Web
   const openChallengeInWeb = vscode.commands.registerCommand(
-    'codearena.openChallengeInWeb',
+    'reporivals.openChallengeInWeb',
     (challenge: Challenge) => {
       const config = getConfig();
       vscode.env.openExternal(
@@ -522,13 +522,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
   );
 
   // Toggle Challenge Grouping
-  const toggleGrouping = vscode.commands.registerCommand('codearena.toggleGrouping', () => {
+  const toggleGrouping = vscode.commands.registerCommand('reporivals.toggleGrouping', () => {
     challengesProvider.toggleGroupByCategory();
   });
 
   // Show Active Match Panel
   const showActiveMatchPanel = vscode.commands.registerCommand(
-    'codearena.showActiveMatchPanel',
+    'reporivals.showActiveMatchPanel',
     () => {
       const panel = ActiveMatchPanel.createOrShow(context.extensionUri);
       const match = matchService.getCurrentMatch();
@@ -538,26 +538,26 @@ function registerCommands(context: vscode.ExtensionContext): void {
   );
 
   // Set Ready (for matched state)
-  const setReady = vscode.commands.registerCommand('codearena.setReady', async () => {
+  const setReady = vscode.commands.registerCommand('reporivals.setReady', async () => {
     const match = matchService.getCurrentMatch();
     if (!match || match.status !== 'matched') {
-      vscode.window.showWarningMessage('CodeArena: No match waiting for ready confirmation.');
+      vscode.window.showWarningMessage('RepoRivals: No match waiting for ready confirmation.');
       return;
     }
 
     const success = await matchService.setReady(match.id);
     if (success) {
-      vscode.window.showInformationMessage('CodeArena: You are ready! Waiting for opponent...');
+      vscode.window.showInformationMessage('RepoRivals: You are ready! Waiting for opponent...');
     } else {
-      vscode.window.showErrorMessage('CodeArena: Failed to set ready status.');
+      vscode.window.showErrorMessage('RepoRivals: Failed to set ready status.');
     }
   });
 
   // Forfeit Match
-  const forfeit = vscode.commands.registerCommand('codearena.forfeit', async () => {
+  const forfeit = vscode.commands.registerCommand('reporivals.forfeit', async () => {
     const match = matchService.getCurrentMatch();
     if (!match) {
-      vscode.window.showWarningMessage('CodeArena: No active match to forfeit.');
+      vscode.window.showWarningMessage('RepoRivals: No active match to forfeit.');
       return;
     }
 
@@ -570,13 +570,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
     if (confirm === 'Forfeit') {
       const success = await matchService.forfeit(match.id);
       if (success) {
-        await vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', false);
-        await vscode.commands.executeCommand('setContext', 'codearena.hasSubmitted', false);
+        await vscode.commands.executeCommand('setContext', 'reporivals.hasActiveMatch', false);
+        await vscode.commands.executeCommand('setContext', 'reporivals.hasSubmitted', false);
         statusBarService.hide();
         matchProvider.setMatch(null);
-        vscode.window.showInformationMessage('CodeArena: Match forfeited.');
+        vscode.window.showInformationMessage('RepoRivals: Match forfeited.');
       } else {
-        vscode.window.showErrorMessage('CodeArena: Failed to forfeit match.');
+        vscode.window.showErrorMessage('RepoRivals: Failed to forfeit match.');
       }
     }
   });
@@ -607,17 +607,17 @@ function registerCommands(context: vscode.ExtensionContext): void {
  * Set up context values for when clauses
  */
 async function setupContext(): Promise<void> {
-  await vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', isAuthenticated);
-  await vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', false);
-  await vscode.commands.executeCommand('setContext', 'codearena.hasSubmitted', false);
-  await vscode.commands.executeCommand('setContext', 'codearena.isSubmissionLocked', false);
+  await vscode.commands.executeCommand('setContext', 'reporivals.isAuthenticated', isAuthenticated);
+  await vscode.commands.executeCommand('setContext', 'reporivals.hasActiveMatch', false);
+  await vscode.commands.executeCommand('setContext', 'reporivals.hasSubmitted', false);
+  await vscode.commands.executeCommand('setContext', 'reporivals.isSubmissionLocked', false);
 }
 
 /**
  * Extension activation
  */
 export function activate(context: vscode.ExtensionContext) {
-  console.info('CodeArena extension is activating...');
+  console.info('RepoRivals extension is activating...');
 
   // Initialize providers and services
   challengesProvider = new ChallengesProvider();
@@ -649,15 +649,15 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     // Update context values
-    vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', !!match);
+    vscode.commands.executeCommand('setContext', 'reporivals.hasActiveMatch', !!match);
     vscode.commands.executeCommand(
       'setContext',
-      'codearena.hasSubmitted',
+      'reporivals.hasSubmitted',
       !!match?.mySubmission
     );
     vscode.commands.executeCommand(
       'setContext',
-      'codearena.isSubmissionLocked',
+      'reporivals.isSubmissionLocked',
       !!match?.mySubmission?.lockedAt
     );
   });
@@ -678,21 +678,21 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     if (state === 'reconnecting') {
-      vscode.window.setStatusBarMessage('$(sync~spin) CodeArena: Reconnecting...', 3000);
+      vscode.window.setStatusBarMessage('$(sync~spin) RepoRivals: Reconnecting...', 3000);
     }
   });
 
   // Register tree data providers
-  const challengesView = vscode.window.createTreeView('codearena-challenges', {
+  const challengesView = vscode.window.createTreeView('reporivals-challenges', {
     treeDataProvider: challengesProvider,
     showCollapseAll: true,
   });
 
-  const matchView = vscode.window.createTreeView('codearena-match', {
+  const matchView = vscode.window.createTreeView('reporivals-match', {
     treeDataProvider: matchProvider,
   });
 
-  const historyView = vscode.window.createTreeView('codearena-history', {
+  const historyView = vscode.window.createTreeView('reporivals-history', {
     treeDataProvider: historyProvider,
   });
 
@@ -723,7 +723,7 @@ export function activate(context: vscode.ExtensionContext) {
           currentUserId = tokens.userId;
           matchProvider.setCurrentUserId(currentUserId);
           // Refresh challenges on successful auto-login
-          vscode.commands.executeCommand('codearena.refreshChallenges');
+          vscode.commands.executeCommand('reporivals.refreshChallenges');
         }
       });
     }
@@ -732,7 +732,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Listen for configuration changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('codearena')) {
+      if (e.affectsConfiguration('reporivals')) {
         // Update status bar visibility
         const config = getConfig();
         if (!config.showTimerInStatusBar) {
@@ -744,14 +744,14 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  console.info('CodeArena extension activated!');
+  console.info('RepoRivals extension activated!');
 }
 
 /**
  * Extension deactivation
  */
 export function deactivate() {
-  console.info('CodeArena extension is deactivating...');
+  console.info('RepoRivals extension is deactivating...');
   statusBarService?.dispose();
   authService?.dispose();
   matchService?.dispose();

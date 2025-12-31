@@ -190,7 +190,7 @@ export async function authGitHubRoutes(app: FastifyInstance) {
         headers: {
           'Authorization': `Bearer ${githubAccessToken}`,
           'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'CodeArena',
+          'User-Agent': 'RepoRivals',
         },
       });
 
@@ -207,7 +207,7 @@ export async function authGitHubRoutes(app: FastifyInstance) {
           headers: {
             'Authorization': `Bearer ${githubAccessToken}`,
             'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'CodeArena',
+            'User-Agent': 'RepoRivals',
           },
         });
 

@@ -7,7 +7,7 @@ export default {
   driver: 'pg',
   dbCredentials: {
     connectionString:
-      process.env.DATABASE_URL || 'postgresql://codearena:codearena@localhost:5432/codearena',
+      process.env.DATABASE_URL || 'postgresql://reporivals:reporivals@localhost:5432/reporivals',
   },
   verbose: true,
   strict: true,

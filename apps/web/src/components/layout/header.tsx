@@ -35,7 +35,7 @@ export function Header() {
         {/* Logo */}
         <Link href="/" className="mr-6 flex items-center space-x-2">
           <Swords className="h-6 w-6 text-primary" />
-          <span className="hidden font-bold sm:inline-block">CodeArena</span>
+          <span className="hidden font-bold sm:inline-block">RepoRivals</span>
         </Link>
 
         {/* Desktop Navigation */}

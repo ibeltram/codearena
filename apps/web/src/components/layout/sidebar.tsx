@@ -85,7 +85,7 @@ export function Sidebar() {
           {!sidebarCollapsed && (
             <Link href="/" className="flex items-center space-x-2" onClick={handleLinkClick}>
               <Swords className="h-6 w-6 text-primary" />
-              <span className="font-bold">CodeArena</span>
+              <span className="font-bold">RepoRivals</span>
             </Link>
           )}
           {/* Close button for mobile */}

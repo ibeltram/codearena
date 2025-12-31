@@ -62,7 +62,7 @@ const DEFAULT_EXCLUSIONS = [
   '*.swp',
   '*.swo',
   '*~',
-  '.codearenaignore',
+  '.reporivalsignore',
 ];
 
 /**
@@ -223,7 +223,7 @@ export class SubmissionService {
   }
 
   /**
-   * Load exclusion patterns from config and .codearenaignore
+   * Load exclusion patterns from config and .reporivalsignore
    */
   private loadExclusionPatterns(workspacePath: string, configPatterns: string[]): string[] {
     const patterns = [...DEFAULT_EXCLUSIONS, ...configPatterns];
@@ -231,8 +231,8 @@ export class SubmissionService {
     // Always add dangerous patterns
     patterns.push(...DANGEROUS_PATTERNS);
 
-    // Load .codearenaignore if it exists
-    const ignoreFilePath = path.join(workspacePath, '.codearenaignore');
+    // Load .reporivalsignore if it exists
+    const ignoreFilePath = path.join(workspacePath, '.reporivalsignore');
     try {
       if (fs.existsSync(ignoreFilePath)) {
         const content = fs.readFileSync(ignoreFilePath, 'utf-8');
@@ -245,7 +245,7 @@ export class SubmissionService {
         }
       }
     } catch (error) {
-      console.error('Failed to read .codearenaignore:', error);
+      console.error('Failed to read .reporivalsignore:', error);
     }
 
     // Remove duplicates

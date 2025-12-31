@@ -7,7 +7,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CodeArena - Competitive Coding Platform',
+  title: 'RepoRivals - Competitive Coding Platform',
   description: 'Accept timed challenges, compete, and prove your skills.',
 };
 

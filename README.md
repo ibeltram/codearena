@@ -1,10 +1,10 @@
-# CodeArena
+# RepoRivals
 
 A competitive coding platform where builders accept timed challenges, work in their own workflows/IDEs, submit final outputs (repo/zip), and are judged via deterministic automation + rubric + optional AI judge.
 
 ## Overview
 
-CodeArena includes:
+RepoRivals includes:
 
 1. **VS Code Extension** - Non-invasive matchmaking, timer, and submission (no workflow disruption)
 2. **Web App** - Discovery, profiles, rankings, tournaments, wallet, artifacts/diffs, admin
@@ -21,7 +21,7 @@ CodeArena includes:
 ## Project Structure
 
 ```
-codearena/
+reporivals/
 ├── apps/
 │   ├── api/          # Backend API (Fastify)
 │   ├── web/          # Web app (Next.js)
@@ -46,7 +46,7 @@ codearena/
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd codearena
+cd reporivals
 
 # Run the setup script (installs deps, starts infra)
 ./init.sh
@@ -96,7 +96,7 @@ Copy `.env.example` to `.env` and configure:
 
 ```bash
 # Database
-DATABASE_URL=postgresql://codearena:codearena@localhost:5432/codearena
+DATABASE_URL=postgresql://reporivals:reporivals@localhost:5432/reporivals
 
 # Redis
 REDIS_URL=redis://localhost:6379

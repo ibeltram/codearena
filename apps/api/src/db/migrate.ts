@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://codearena:codearena@localhost:5432/codearena';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://reporivals:reporivals@localhost:5432/reporivals';
 
 async function runMigrations() {
   console.info('Starting database migrations...');

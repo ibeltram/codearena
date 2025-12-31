@@ -45,7 +45,7 @@ export class MatchService {
   async joinMatch(challengeId: string): Promise<Match | null> {
     const token = await this.getAccessToken();
     if (!token) {
-      vscode.window.showErrorMessage('CodeArena: Please sign in to join a match.');
+      vscode.window.showErrorMessage('RepoRivals: Please sign in to join a match.');
       return null;
     }
 
@@ -79,7 +79,7 @@ export class MatchService {
       return match;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to join match';
-      vscode.window.showErrorMessage(`CodeArena: ${message}`);
+      vscode.window.showErrorMessage(`RepoRivals: ${message}`);
       return null;
     }
   }
@@ -328,7 +328,7 @@ export class MatchService {
 
       case 'error':
         console.error('Match event error:', event.data);
-        vscode.window.showErrorMessage(`CodeArena: ${event.data?.message || 'Match error occurred'}`);
+        vscode.window.showErrorMessage(`RepoRivals: ${event.data?.message || 'Match error occurred'}`);
         break;
     }
   }
@@ -339,7 +339,7 @@ export class MatchService {
   private scheduleReconnect(matchId: string): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       vscode.window.showErrorMessage(
-        'CodeArena: Lost connection to match. Please check your network.'
+        'RepoRivals: Lost connection to match. Please check your network.'
       );
       return;
     }

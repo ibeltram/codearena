@@ -19,7 +19,7 @@ export class ChallengeItem extends vscode.TreeItem {
 
     // Command to show challenge details
     this.command = {
-      command: 'codearena.showChallengeDetails',
+      command: 'reporivals.showChallengeDetails',
       title: 'Show Challenge Details',
       arguments: [challenge],
     };

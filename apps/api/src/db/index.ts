@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import * as schema from './schema';
 
 // Database configuration
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://codearena:codearena@localhost:5432/codearena';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://reporivals:reporivals@localhost:5432/reporivals';
 
 // Create a connection pool
 const pool = new Pool({

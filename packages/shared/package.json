@@ -1,5 +1,5 @@
 {
-  "name": "@codearena/shared",
+  "name": "@reporivals/shared",
   "version": "0.1.0",
   "private": true,
   "main": "./dist/index.js",
@@ -25,7 +25,7 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
-    "@codearena/tsconfig": "workspace:*",
+    "@reporivals/tsconfig": "workspace:*",
     "eslint": "^8.55.0",
     "tsup": "^8.0.1",
     "typescript": "^5.3.0"

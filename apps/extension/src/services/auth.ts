@@ -61,7 +61,7 @@ export class AuthService {
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
-    const config = vscode.workspace.getConfiguration('codearena');
+    const config = vscode.workspace.getConfiguration('reporivals');
     this.apiUrl = config.get<string>('apiUrl', 'http://localhost:3002');
     this.webUrl = config.get<string>('webUrl', 'http://localhost:3001');
 
@@ -70,7 +70,7 @@ export class AuthService {
       vscode.StatusBarAlignment.Right,
       99
     );
-    this.statusBarItem.command = 'codearena.showAuthStatus';
+    this.statusBarItem.command = 'reporivals.showAuthStatus';
     context.subscriptions.push(this.statusBarItem);
   }
 
@@ -78,7 +78,7 @@ export class AuthService {
    * Get stored tokens
    */
   async getStoredTokens(): Promise<StoredTokens | null> {
-    const tokensJson = await this.context.secrets.get('codearena.tokens');
+    const tokensJson = await this.context.secrets.get('reporivals.tokens');
     if (!tokensJson) {
       return null;
     }
@@ -94,14 +94,14 @@ export class AuthService {
    * Store tokens securely
    */
   async storeTokens(tokens: StoredTokens): Promise<void> {
-    await this.context.secrets.store('codearena.tokens', JSON.stringify(tokens));
+    await this.context.secrets.store('reporivals.tokens', JSON.stringify(tokens));
   }
 
   /**
    * Clear stored tokens
    */
   async clearTokens(): Promise<void> {
-    await this.context.secrets.delete('codearena.tokens');
+    await this.context.secrets.delete('reporivals.tokens');
   }
 
   /**
@@ -159,7 +159,7 @@ export class AuthService {
       if (!response.ok) {
         const error = (await response.json()) as AuthError;
         vscode.window.showErrorMessage(
-          `CodeArena: Failed to start sign-in: ${error.errorDescription || 'Unknown error'}`
+          `RepoRivals: Failed to start sign-in: ${error.errorDescription || 'Unknown error'}`
         );
         return false;
       }
@@ -190,11 +190,11 @@ export class AuthService {
       });
 
       // Update context
-      await vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', true);
+      await vscode.commands.executeCommand('setContext', 'reporivals.isAuthenticated', true);
 
       // Show success
       vscode.window.showInformationMessage(
-        `CodeArena: Signed in as ${tokens.user?.displayName || 'User'}!`
+        `RepoRivals: Signed in as ${tokens.user?.displayName || 'User'}!`
       );
 
       this.updateStatusBar(tokens.user?.displayName || 'User');
@@ -203,7 +203,7 @@ export class AuthService {
     } catch (error) {
       console.error('Device code flow error:', error);
       vscode.window.showErrorMessage(
-        `CodeArena: Sign-in failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `RepoRivals: Sign-in failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
       return false;
     }
@@ -217,7 +217,7 @@ export class AuthService {
 
     // Show notification with actions
     const action = await vscode.window.showInformationMessage(
-      `CodeArena Sign In\n\n${codeDisplay}\n\nEnter this code in your browser to authorize.`,
+      `RepoRivals Sign In\n\n${codeDisplay}\n\nEnter this code in your browser to authorize.`,
       { modal: true },
       'Open Browser',
       'Copy Code',
@@ -230,7 +230,7 @@ export class AuthService {
 
     if (action === 'Copy Code') {
       await vscode.env.clipboard.writeText(data.userCode);
-      vscode.window.showInformationMessage('CodeArena: Code copied to clipboard!');
+      vscode.window.showInformationMessage('RepoRivals: Code copied to clipboard!');
     }
 
     // Always open browser
@@ -261,7 +261,7 @@ export class AuthService {
         // Check if expired
         if (Date.now() >= expiresAt) {
           this.stopPolling();
-          vscode.window.showWarningMessage('CodeArena: Sign-in timed out. Please try again.');
+          vscode.window.showWarningMessage('RepoRivals: Sign-in timed out. Please try again.');
           resolve(null);
           return;
         }
@@ -290,7 +290,7 @@ export class AuthService {
 
           if (result.error === 'expired_token') {
             this.stopPolling();
-            vscode.window.showWarningMessage('CodeArena: Sign-in code expired. Please try again.');
+            vscode.window.showWarningMessage('RepoRivals: Sign-in code expired. Please try again.');
             resolve(null);
             return;
           }
@@ -298,7 +298,7 @@ export class AuthService {
           // Other error
           this.stopPolling();
           vscode.window.showErrorMessage(
-            `CodeArena: Sign-in failed: ${result.errorDescription || 'Unknown error'}`
+            `RepoRivals: Sign-in failed: ${result.errorDescription || 'Unknown error'}`
           );
           resolve(null);
         } catch (error) {
@@ -342,7 +342,7 @@ export class AuthService {
       if (!response.ok) {
         // Refresh failed, clear tokens
         await this.clearTokens();
-        await vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', false);
+        await vscode.commands.executeCommand('setContext', 'reporivals.isAuthenticated', false);
         return false;
       }
 
@@ -387,7 +387,7 @@ export class AuthService {
 
     // Clear local tokens
     await this.clearTokens();
-    await vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', false);
+    await vscode.commands.executeCommand('setContext', 'reporivals.isAuthenticated', false);
 
     // Hide status bar
     this.statusBarItem?.hide();
@@ -427,7 +427,7 @@ export class AuthService {
 
     // Update UI
     this.updateStatusBar(tokens.userDisplayName);
-    await vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', true);
+    await vscode.commands.executeCommand('setContext', 'reporivals.isAuthenticated', true);
 
     return true;
   }
