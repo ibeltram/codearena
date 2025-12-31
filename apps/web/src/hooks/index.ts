@@ -47,3 +47,16 @@ export {
   useReleaseCredits,
   walletKeys,
 } from './use-wallet';
+export {
+  useAdminChallenges,
+  useAdminChallenge,
+  useAdminChallengeVersions,
+  useCreateChallenge,
+  useUpdateChallenge,
+  useDeleteChallenge,
+  usePublishChallenge,
+  useUnpublishChallenge,
+  useCreateChallengeVersion,
+  usePublishChallengeVersion,
+  adminChallengeKeys,
+} from './use-admin-challenges';
