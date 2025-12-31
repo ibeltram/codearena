@@ -21,7 +21,23 @@ import { getMockFileContent } from '@/hooks/use-artifact';
 import { FileTree } from './file-tree';
 import { CodeViewer } from './code-viewer';
 import { MarkdownViewer } from './markdown-viewer';
+import { ImageViewer } from './image-viewer';
 import { Breadcrumb } from './breadcrumb';
+
+/**
+ * Image file extensions that can be previewed
+ */
+const IMAGE_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
+]);
+
+/**
+ * Check if a file path is an image
+ */
+function isImageFile(path: string): boolean {
+  const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
+  return IMAGE_EXTENSIONS.has(ext);
+}
 
 interface ArtifactViewerProps {
   artifact: Artifact | null | undefined;
@@ -240,7 +256,14 @@ export function ArtifactViewer({
 
           {/* Content viewer */}
           <div className="flex-1 overflow-auto">
-            {isBinary ? (
+            {selectedPath && isImageFile(selectedPath) ? (
+              <ImageViewer
+                path={selectedPath}
+                artifactId={artifact.id}
+                mimeType={selectedFile?.mimeType}
+                size={selectedFile?.size}
+              />
+            ) : isBinary ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center p-8">
                   <div className="text-4xl mb-4">🔒</div>

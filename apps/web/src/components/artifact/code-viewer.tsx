@@ -3,8 +3,8 @@
 /**
  * CodeViewer Component
  *
- * Displays file content with syntax highlighting and line numbers.
- * Uses a simple approach without Monaco for better performance.
+ * Displays file content with line numbers and basic syntax styling.
+ * Uses CSS-based styling for code display without external syntax highlighting libraries.
  */
 
 import React, { useMemo } from 'react';
@@ -19,16 +19,62 @@ interface CodeViewerProps {
   className?: string;
 }
 
+/**
+ * Get language label for display
+ */
+function getLanguageLabel(language: string): string {
+  const labels: Record<string, string> = {
+    typescript: 'TypeScript',
+    javascript: 'JavaScript',
+    jsx: 'JSX',
+    tsx: 'TSX',
+    json: 'JSON',
+    html: 'HTML',
+    css: 'CSS',
+    scss: 'SCSS',
+    python: 'Python',
+    ruby: 'Ruby',
+    go: 'Go',
+    rust: 'Rust',
+    java: 'Java',
+    kotlin: 'Kotlin',
+    csharp: 'C#',
+    cpp: 'C++',
+    c: 'C',
+    php: 'PHP',
+    swift: 'Swift',
+    sql: 'SQL',
+    yaml: 'YAML',
+    yml: 'YAML',
+    xml: 'XML',
+    markdown: 'Markdown',
+    md: 'Markdown',
+    shell: 'Shell',
+    bash: 'Bash',
+    dockerfile: 'Dockerfile',
+    plaintext: 'Plain Text',
+  };
+
+  return labels[language.toLowerCase()] || language;
+}
+
 export function CodeViewer({
   content,
   isLoading,
   error,
   className,
 }: CodeViewerProps) {
+  // Split content into lines for line numbers
   const lines = useMemo(() => {
     if (!content?.content) return [];
     return content.content.split('\n');
   }, [content?.content]);
+
+  // Calculate the width needed for line numbers
+  const lineNumberWidth = useMemo(() => {
+    const digits = String(lines.length).length;
+    return Math.max(digits * 0.6 + 1.5, 3); // em units
+  }, [lines.length]);
 
   if (isLoading) {
     return (
@@ -79,7 +125,7 @@ export function CodeViewer({
             {content.path.split('/').pop()}
           </span>
           <span className="text-gray-400">•</span>
-          <span className="text-gray-500">{content.language}</span>
+          <span className="text-gray-500">{getLanguageLabel(content.language)}</span>
         </div>
         <div className="flex items-center gap-4 text-xs text-gray-500">
           <span>{content.lineCount} lines</span>
@@ -88,32 +134,39 @@ export function CodeViewer({
       </div>
 
       {/* Code content */}
-      <div className="flex-1 overflow-auto">
-        <pre className="text-sm font-mono">
-          <code className={`language-${content.language}`}>
-            <table className="w-full border-collapse">
-              <tbody>
+      <div className="flex-1 overflow-auto bg-[#1e1e1e]">
+        <div className="flex min-h-full">
+          {/* Line numbers column */}
+          <div
+            className="flex-shrink-0 text-right select-none bg-[#1e1e1e] border-r border-gray-700 py-3 pr-3"
+            style={{ width: `${lineNumberWidth}em` }}
+          >
+            {lines.map((_, index) => (
+              <div
+                key={index}
+                className="text-gray-500 text-[13px] leading-[1.5] font-mono px-2"
+              >
+                {index + 1}
+              </div>
+            ))}
+          </div>
+
+          {/* Code content column */}
+          <div className="flex-1 overflow-x-auto">
+            <pre className="py-3 px-4 m-0">
+              <code className="text-[13px] leading-[1.5] font-mono text-gray-200">
                 {lines.map((line, index) => (
-                  <tr
+                  <div
                     key={index}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                    className="hover:bg-gray-800/50 min-h-[1.5em]"
                   >
-                    {/* Line number */}
-                    <td
-                      className="px-4 py-0.5 text-right text-gray-400 dark:text-gray-600 select-none border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 w-12"
-                    >
-                      {index + 1}
-                    </td>
-                    {/* Line content */}
-                    <td className="px-4 py-0.5 whitespace-pre text-gray-800 dark:text-gray-200">
-                      {line || '\u00A0'}
-                    </td>
-                  </tr>
+                    {line || ' '}
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </code>
-        </pre>
+              </code>
+            </pre>
+          </div>
+        </div>
       </div>
     </div>
   );

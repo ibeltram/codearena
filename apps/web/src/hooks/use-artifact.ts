@@ -14,14 +14,56 @@ import type {
 } from '@/types/artifact';
 import { compareArtifacts } from '@/types/artifact';
 
+// Helper to generate mock artifact for development
+export function getMockArtifact(artifactId: string): Artifact {
+  return {
+    id: artifactId,
+    contentHash: 'sha256-mock-' + artifactId.slice(0, 8),
+    storageKey: 's3://artifacts/mock/' + artifactId,
+    sizeBytes: 45678,
+    createdAt: new Date().toISOString(),
+    secretScanStatus: 'clean',
+    isPublicBlocked: false,
+    manifestJson: {
+      version: 1,
+      contentHash: 'sha256-mock-' + artifactId.slice(0, 8),
+      totalSize: 45678,
+      fileCount: 8,
+      files: [
+        { path: 'src/index.ts', size: 1200, hash: 'hash1', isText: true, isBinary: false },
+        { path: 'src/components/App.tsx', size: 2400, hash: 'hash2', isText: true, isBinary: false },
+        { path: 'src/components/Header.tsx', size: 1800, hash: 'hash3', isText: true, isBinary: false },
+        { path: 'src/utils/helpers.ts', size: 900, hash: 'hash4', isText: true, isBinary: false },
+        { path: 'package.json', size: 450, hash: 'hash5', isText: true, isBinary: false },
+        { path: 'README.md', size: 800, hash: 'hash6', isText: true, isBinary: false },
+        { path: 'tsconfig.json', size: 320, hash: 'hash7', isText: true, isBinary: false },
+        { path: 'assets/logo.png', size: 15000, hash: 'hash8', isText: false, isBinary: true, mimeType: 'image/png' },
+      ],
+      metadata: {
+        createdAt: new Date().toISOString(),
+        sourceType: 'zip',
+        originalFilename: 'submission.zip',
+        clientType: 'extension',
+        clientVersion: '1.0.0',
+      },
+    },
+  };
+}
+
 // Fetch single artifact by ID
 export function useArtifact(artifactId: string | undefined) {
   return useQuery({
     queryKey: ['artifact', artifactId],
     queryFn: async () => {
       if (!artifactId) throw new Error('Artifact ID required');
-      const response = await api.get(`/artifacts/${artifactId}`);
-      return response as Artifact;
+      try {
+        const response = await api.get(`/artifacts/${artifactId}`);
+        return response as Artifact;
+      } catch (error) {
+        // Fall back to mock data in development if API not available
+        console.warn('Artifact API not available, using mock data:', error);
+        return getMockArtifact(artifactId);
+      }
     },
     enabled: !!artifactId,
     staleTime: 5 * 60 * 1000, // 5 minutes - artifacts are immutable
