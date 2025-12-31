@@ -66,6 +66,18 @@
         "command": "codearena.toggleGrouping",
         "title": "Toggle Grouping",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "codearena.showActiveMatchPanel",
+        "title": "CodeArena: Show Active Match"
+      },
+      {
+        "command": "codearena.setReady",
+        "title": "CodeArena: Ready for Match"
+      },
+      {
+        "command": "codearena.forfeit",
+        "title": "CodeArena: Forfeit Match"
       }
     ],
     "viewsContainers": {
@@ -213,6 +225,18 @@
         {
           "command": "codearena.openChallengeInWeb",
           "when": "false"
+        },
+        {
+          "command": "codearena.showActiveMatchPanel",
+          "when": "codearena.hasActiveMatch"
+        },
+        {
+          "command": "codearena.setReady",
+          "when": "codearena.hasActiveMatch"
+        },
+        {
+          "command": "codearena.forfeit",
+          "when": "codearena.hasActiveMatch"
         }
       ]
     }

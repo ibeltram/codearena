@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ChallengesProvider, MatchProvider, HistoryProvider } from './providers';
-import { StatusBarService, AuthService } from './services';
+import { StatusBarService, AuthService, MatchService } from './services';
+import { ActiveMatchPanel } from './panels/active-match-panel';
 import { Challenge, MatchHistoryItem, ExtensionConfig } from './types';
 
 // Global providers and services
@@ -9,6 +10,7 @@ let matchProvider: MatchProvider;
 let historyProvider: HistoryProvider;
 let statusBarService: StatusBarService;
 let authService: AuthService;
+let matchService: MatchService;
 
 // Extension state
 let isAuthenticated = false;
@@ -179,6 +181,19 @@ function registerCommands(context: vscode.ExtensionContext): void {
         return;
       }
 
+      // Check if already in a match
+      if (matchService.getCurrentMatch()) {
+        const action = await vscode.window.showWarningMessage(
+          'CodeArena: You already have an active match. Would you like to view it?',
+          'View Match',
+          'Cancel'
+        );
+        if (action === 'View Match') {
+          vscode.commands.executeCommand('codearena.showActiveMatchPanel');
+        }
+        return;
+      }
+
       // Confirm match join
       const confirm = await vscode.window.showWarningMessage(
         `Join match for "${challenge.title}"?\n\nStake: ${challenge.stakeAmount} credits\nTime limit: ${challenge.timeLimit} minutes`,
@@ -187,27 +202,27 @@ function registerCommands(context: vscode.ExtensionContext): void {
       );
 
       if (confirm === 'Join Match') {
-        // TODO: Call API to join match with auth token
-        const token = await authService.getAccessToken();
-        if (!token) {
-          vscode.window.showErrorMessage('CodeArena: Please sign in again.');
-          return;
-        }
+        vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `CodeArena: Joining match for ${challenge.title}...`,
+            cancellable: false,
+          },
+          async () => {
+            const match = await matchService.joinMatch(challenge.id);
+            if (match) {
+              // Update context for command visibility
+              await vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', true);
 
-        vscode.window.showInformationMessage(
-          `CodeArena: Joining match for ${challenge.title}...`
+              // Show the active match panel
+              vscode.commands.executeCommand('codearena.showActiveMatchPanel');
+
+              vscode.window.showInformationMessage(
+                `CodeArena: Joined match! ${match.status === 'open' ? 'Waiting for opponent...' : 'Match found!'}`
+              );
+            }
+          }
         );
-
-        // TODO: Make API call with token
-        // const config = getConfig();
-        // fetch(`${config.apiUrl}/api/matches/queue`, {
-        //   method: 'POST',
-        //   headers: {
-        //     'Authorization': `Bearer ${token}`,
-        //     'Content-Type': 'application/json',
-        //   },
-        //   body: JSON.stringify({ challengeId: challenge.id }),
-        // });
       }
     }
   );
@@ -376,6 +391,61 @@ function registerCommands(context: vscode.ExtensionContext): void {
     challengesProvider.toggleGroupByCategory();
   });
 
+  // Show Active Match Panel
+  const showActiveMatchPanel = vscode.commands.registerCommand(
+    'codearena.showActiveMatchPanel',
+    () => {
+      const panel = ActiveMatchPanel.createOrShow(context.extensionUri);
+      const match = matchService.getCurrentMatch();
+      panel.setMatch(match);
+      panel.setCurrentUserId(currentUserId);
+    }
+  );
+
+  // Set Ready (for matched state)
+  const setReady = vscode.commands.registerCommand('codearena.setReady', async () => {
+    const match = matchService.getCurrentMatch();
+    if (!match || match.status !== 'matched') {
+      vscode.window.showWarningMessage('CodeArena: No match waiting for ready confirmation.');
+      return;
+    }
+
+    const success = await matchService.setReady(match.id);
+    if (success) {
+      vscode.window.showInformationMessage('CodeArena: You are ready! Waiting for opponent...');
+    } else {
+      vscode.window.showErrorMessage('CodeArena: Failed to set ready status.');
+    }
+  });
+
+  // Forfeit Match
+  const forfeit = vscode.commands.registerCommand('codearena.forfeit', async () => {
+    const match = matchService.getCurrentMatch();
+    if (!match) {
+      vscode.window.showWarningMessage('CodeArena: No active match to forfeit.');
+      return;
+    }
+
+    const confirm = await vscode.window.showWarningMessage(
+      'Are you sure you want to forfeit this match?\n\nYou will lose your stake credits.',
+      { modal: true },
+      'Forfeit'
+    );
+
+    if (confirm === 'Forfeit') {
+      const success = await matchService.forfeit(match.id);
+      if (success) {
+        await vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', false);
+        await vscode.commands.executeCommand('setContext', 'codearena.hasSubmitted', false);
+        statusBarService.hide();
+        matchProvider.setMatch(null);
+        vscode.window.showInformationMessage('CodeArena: Match forfeited.');
+      } else {
+        vscode.window.showErrorMessage('CodeArena: Failed to forfeit match.');
+      }
+    }
+  });
+
   context.subscriptions.push(
     signIn,
     signOut,
@@ -391,7 +461,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
     refreshChallenges,
     filterChallenges,
     openChallengeInWeb,
-    toggleGrouping
+    toggleGrouping,
+    showActiveMatchPanel,
+    setReady,
+    forfeit
   );
 }
 
@@ -416,6 +489,51 @@ export function activate(context: vscode.ExtensionContext) {
   historyProvider = new HistoryProvider();
   statusBarService = new StatusBarService();
   authService = new AuthService(context);
+
+  // Initialize match service with auth token getter and config getter
+  matchService = new MatchService(
+    () => authService.getAccessToken(),
+    getConfig
+  );
+
+  // Listen for match updates from the service
+  matchService.onMatchUpdate((match) => {
+    matchProvider.setMatch(match);
+    statusBarService.setMatch(match);
+
+    // Update the webview panel if it exists
+    if (ActiveMatchPanel.currentPanel) {
+      ActiveMatchPanel.currentPanel.setMatch(match);
+    }
+
+    // Update context values
+    vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', !!match);
+    vscode.commands.executeCommand(
+      'setContext',
+      'codearena.hasSubmitted',
+      !!match?.mySubmission
+    );
+  });
+
+  // Listen for timer ticks
+  matchService.onTimerTick((remaining) => {
+    matchProvider.setTimeRemaining(remaining);
+
+    if (ActiveMatchPanel.currentPanel) {
+      ActiveMatchPanel.currentPanel.setTimeRemaining(remaining);
+    }
+  });
+
+  // Listen for connection state changes
+  matchService.onConnectionStateChange((state) => {
+    if (ActiveMatchPanel.currentPanel) {
+      ActiveMatchPanel.currentPanel.setConnectionState(state);
+    }
+
+    if (state === 'reconnecting') {
+      vscode.window.setStatusBarMessage('$(sync~spin) CodeArena: Reconnecting...', 3000);
+    }
+  });
 
   // Register tree data providers
   const challengesView = vscode.window.createTreeView('codearena-challenges', {
@@ -444,6 +562,7 @@ export function activate(context: vscode.ExtensionContext) {
     dispose: () => {
       statusBarService.dispose();
       authService.dispose();
+      matchService.dispose();
     },
   });
 
@@ -487,4 +606,5 @@ export function deactivate() {
   console.info('CodeArena extension is deactivating...');
   statusBarService?.dispose();
   authService?.dispose();
+  matchService?.dispose();
 }
