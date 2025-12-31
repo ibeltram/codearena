@@ -22,6 +22,7 @@ import {
   canCancel,
   type MatchStatus,
 } from '../lib/match-state-machine';
+import { validateStakeAmount } from '../lib/rating-service';
 
 const {
   matches,
@@ -651,10 +652,19 @@ export async function matchRoutes(app: FastifyInstance) {
     // For now, assume 100 credit stake
     const stakeAmount = DEFAULT_STAKE_AMOUNT;
 
-    // Verify credit balance if stake > 0
+    // Verify credit balance and stake cap if stake > 0
     let creditAccount = null;
     let hold = null;
     if (stakeAmount > 0) {
+      // Check stake cap based on rating
+      const stakeValidation = await validateStakeAmount(userId, stakeAmount);
+      if (!stakeValidation.valid) {
+        throw new ValidationError(stakeValidation.reason || 'Stake exceeds your rating-based cap', {
+          requested: stakeAmount,
+          maxAllowed: stakeValidation.maxAllowed,
+        });
+      }
+
       creditAccount = await getOrCreateCreditAccount(userId);
       if (creditAccount.balanceAvailable < stakeAmount) {
         throw new ValidationError('Insufficient credits for stake', {

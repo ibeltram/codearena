@@ -14,6 +14,7 @@
 
 import { eq, and } from 'drizzle-orm';
 import { db, schema } from '../db';
+import { updateMatchRatings } from './rating-service';
 
 const { matches, matchParticipants, creditHolds, creditAccounts } = schema;
 
@@ -650,6 +651,18 @@ export async function settleMatch(
         updatedAt: new Date(),
       })
       .where(eq(creditAccounts.id, account.id));
+  }
+
+  // Update player ratings using Glicko-2 system
+  try {
+    const ratingChanges = await updateMatchRatings(matchId, winnerId, isDraw);
+    console.log(`[Rating] Updated ratings for match ${matchId}:`, {
+      player1: `${ratingChanges.player1.oldRating} → ${ratingChanges.player1.newRating} (${ratingChanges.player1.change > 0 ? '+' : ''}${ratingChanges.player1.change})`,
+      player2: `${ratingChanges.player2.oldRating} → ${ratingChanges.player2.newRating} (${ratingChanges.player2.change > 0 ? '+' : ''}${ratingChanges.player2.change})`,
+    });
+  } catch (error) {
+    // Log but don't fail settlement if rating update fails
+    console.error(`[Rating] Failed to update ratings for match ${matchId}:`, error);
   }
 }
 
