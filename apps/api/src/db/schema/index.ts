@@ -8,3 +8,4 @@ export * from './credits';
 export * from './rankings';
 export * from './tournaments';
 export * from './moderation';
+export * from './rewards';
