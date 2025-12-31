@@ -41,6 +41,25 @@ export interface ChallengeFilters {
   sort?: ChallengeSortOption;
 }
 
+// Detailed challenge response from /api/challenges/slug/:slug
+export interface ChallengeDetailVersion {
+  id: string;
+  challengeId: string;
+  versionNumber: number;
+  requirementsJson: ChallengeRequirement[] | null;
+  rubricJson: RubricCriterion[] | null;
+  constraintsJson: ChallengeConstraints | null;
+  templateRef: string | null;
+  judgeImageRef: string | null;
+  createdAt: string;
+  publishedAt: string | null;
+}
+
+export interface ChallengeDetail extends Challenge {
+  latestVersion: ChallengeDetailVersion | null;
+  versionCount: number;
+}
+
 // Display helpers
 export const categoryLabels: Record<ChallengeCategory, string> = {
   frontend: 'Frontend',

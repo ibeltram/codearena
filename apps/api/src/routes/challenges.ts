@@ -26,6 +26,10 @@ const versionIdParamSchema = z.object({
   versionId: z.string().uuid(),
 });
 
+const challengeSlugParamSchema = z.object({
+  slug: z.string().min(1).max(100),
+});
+
 // Response types
 interface ChallengeWithVersion {
   id: string;
@@ -166,6 +170,49 @@ export async function challengeRoutes(app: FastifyInstance) {
         total,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  });
+
+  // GET /api/challenges/slug/:slug - Get challenge by slug
+  app.get('/api/challenges/slug/:slug', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramResult = challengeSlugParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid challenge slug', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { slug } = paramResult.data;
+
+    // Get challenge by slug
+    const [challenge] = await db
+      .select()
+      .from(challenges)
+      .where(eq(challenges.slug, slug));
+
+    if (!challenge) {
+      throw new NotFoundError('Challenge', slug);
+    }
+
+    // Get latest published version
+    const [latestVersion] = await db
+      .select()
+      .from(challengeVersions)
+      .where(eq(challengeVersions.challengeId, challenge.id))
+      .orderBy(desc(challengeVersions.versionNumber))
+      .limit(1);
+
+    // Get version count
+    const [versionCount] = await db
+      .select({ count: count() })
+      .from(challengeVersions)
+      .where(eq(challengeVersions.challengeId, challenge.id));
+
+    return {
+      ...challenge,
+      latestVersion: latestVersion || null,
+      versionCount: versionCount?.count ?? 0,
     };
   });
 
