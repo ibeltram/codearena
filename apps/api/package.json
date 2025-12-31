@@ -10,9 +10,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate:pg",
+    "db:push": "drizzle-kit push:pg",
+    "db:sync": "tsx src/db/sync-schema.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
+    "db:seed-rewards": "tsx src/db/seed-rewards.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
