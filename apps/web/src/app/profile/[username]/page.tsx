@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { MainLayout } from '@/components/layout/main-layout';
 import {
@@ -9,7 +9,7 @@ import {
   StatsCard,
   BadgesCard,
 } from '@/components/profile';
-import { useUserProfile, useUserMatchHistory } from '@/hooks/use-profile';
+import { useUserProfile, useUserMatchHistory, useTogglePublicArtifacts } from '@/hooks/use-profile';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -24,7 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useTogglePublicArtifacts } from '@/hooks/use-profile';
 import {
   User,
   History,
@@ -34,6 +33,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import { useAuthStore } from '@/store';
 
 // Mock data for development (will be replaced by API calls)
 const mockProfile = {
@@ -226,22 +226,25 @@ export default function ProfilePage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [matchPage, setMatchPage] = useState(1);
 
-  // In production, these would fetch from the API
-  // For now, use mock data
-  const profile = mockProfile;
-  const matches = mockMatches;
-  const isLoading = false;
-  const isError = false;
+  // Get current user from auth store
+  const { user: currentUser, isAuthenticated } = useAuthStore();
 
-  // Uncomment these for production:
-  // const { data: profile, isLoading, isError } = useUserProfile(username);
-  // const { data: matchesData } = useUserMatchHistory(username, { page: matchPage, limit: 10 });
-  // const matches = matchesData?.data || [];
+  // Fetch profile data from API
+  const { data: profile, isLoading, isError } = useUserProfile(username);
+  const { data: matchesData } = useUserMatchHistory(username, { page: matchPage, limit: 10 });
+  const matches = matchesData?.data || [];
 
   const togglePublicArtifacts = useTogglePublicArtifacts();
 
-  // Check if viewing own profile (would need auth context in production)
-  const isOwnProfile = true; // TODO: Check against auth user
+  // Check if viewing own profile by comparing with auth user
+  const isOwnProfile = useMemo(() => {
+    if (!isAuthenticated || !currentUser || !profile?.user) {
+      return false;
+    }
+    // Check by ID or by username/displayName
+    return currentUser.id === profile.user.id ||
+           currentUser.displayName.toLowerCase() === username.toLowerCase();
+  }, [isAuthenticated, currentUser, profile?.user, username]);
 
   const handleTogglePublicArtifacts = async (checked: boolean) => {
     try {

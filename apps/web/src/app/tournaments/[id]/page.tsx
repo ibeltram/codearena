@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -34,6 +34,7 @@ import {
   useCheckInToTournament,
 } from '@/hooks/use-tournament';
 import { BracketMatch } from '@/types/tournament';
+import { useAuthStore } from '@/store';
 
 type TabType = 'bracket' | 'participants' | 'rules';
 
@@ -41,6 +42,10 @@ export default function TournamentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const tournamentId = params.id as string;
+
+  // Get current user from auth store
+  const { user, isAuthenticated } = useAuthStore();
+  const currentUserId = user?.id;
 
   const [activeTab, setActiveTab] = useState<TabType>('bracket');
   const [bracketView, setBracketView] = useState<'tree' | 'list'>('tree');
@@ -76,8 +81,15 @@ export default function TournamentDetailPage() {
     }
   };
 
-  // Check if current user is registered (simplified - would need auth context)
-  const isRegistered = false; // TODO: Check from auth context
+  // Check if current user is registered in the tournament
+  const isRegistered = useMemo(() => {
+    if (!isAuthenticated || !currentUserId || !participantsData?.participants) {
+      return false;
+    }
+    return participantsData.participants.some(
+      (participant) => participant.user.id === currentUserId
+    );
+  }, [isAuthenticated, currentUserId, participantsData?.participants]);
 
   if (isLoading) {
     return (

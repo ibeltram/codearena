@@ -37,14 +37,16 @@ import {
 import { useMatch, useReadyUp, useForfeit, useMatchEvents, useMatchResults } from '@/hooks';
 import { categoryLabels, categoryColors, difficultyLabels, difficultyColors } from '@/types/challenge';
 import { cn } from '@/lib/utils';
-
-// Mock current user ID - in production this would come from auth context
-const MOCK_USER_ID = 'mock-user-id';
+import { useAuthStore } from '@/store';
 
 export default function MatchDetailPage() {
   const params = useParams();
   const router = useRouter();
   const matchId = params.id as string;
+
+  // Get current user from auth store
+  const { user, isAuthenticated } = useAuthStore();
+  const currentUserId = user?.id;
 
   const { data: match, isLoading, isError, error } = useMatch(matchId);
   const readyMutation = useReadyUp();
@@ -77,17 +79,17 @@ export default function MatchDetailPage() {
     reconnect,
     reconnectAttempts,
   } = useMatchEvents(matchId, {
-    enabled: shouldEnableSSE,
-    userId: MOCK_USER_ID,
+    enabled: shouldEnableSSE && isAuthenticated,
+    userId: currentUserId,
     onTimerTick: handleTimerTick,
     onStateChange: handleStateChange,
   });
 
-  // Find current user's participant record (mock)
+  // Find current user's participant record
   const currentParticipant = match?.participants?.find(
-    (p) => p.user.id === MOCK_USER_ID
+    (p) => p.user.id === currentUserId
   );
-  const isParticipant = !!currentParticipant;
+  const isParticipant = !!currentParticipant && isAuthenticated;
 
   const handleReadyUp = async () => {
     try {
@@ -258,7 +260,7 @@ export default function MatchDetailPage() {
             {participantA ? (
               <ParticipantCard
                 participant={participantA}
-                isCurrentUser={participantA.user.id === MOCK_USER_ID}
+                isCurrentUser={participantA.user.id === currentUserId}
                 matchStatus={status}
               />
             ) : (
@@ -267,7 +269,7 @@ export default function MatchDetailPage() {
             {participantB ? (
               <ParticipantCard
                 participant={participantB}
-                isCurrentUser={participantB.user.id === MOCK_USER_ID}
+                isCurrentUser={participantB.user.id === currentUserId}
                 matchStatus={status}
               />
             ) : (
