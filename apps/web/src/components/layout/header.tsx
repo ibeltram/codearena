@@ -6,6 +6,7 @@ import {
   Trophy,
   Wallet,
   Swords,
+  Gift,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,15 @@ export function Header() {
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             Leaderboard
+          </Link>
+          <Link
+            href="/rewards"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="flex items-center gap-1">
+              <Gift className="h-4 w-4" />
+              Rewards
+            </span>
           </Link>
         </nav>
 

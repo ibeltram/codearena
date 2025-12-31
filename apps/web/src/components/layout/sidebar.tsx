@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   Shield,
   Medal,
+  Gift,
   X,
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ const mainNavItems = [
 
 const userNavItems = [
   { href: '/wallet', label: 'Wallet', icon: Wallet },
+  { href: '/rewards', label: 'Rewards', icon: Gift },
   { href: '/profile', label: 'Profile', icon: User },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -142,23 +144,29 @@ export function Sidebar() {
             <>
               <Separator className="my-4" />
               <div className="space-y-1">
-                {userNavItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={handleLinkClick}
-                    className={cn(
-                      // Touch-friendly: min-height 44px for mobile accessibility
-                      'flex items-center gap-3 rounded-lg px-3 py-3 min-h-[44px] text-sm font-medium transition-colors',
-                      pathname === item.href
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent'
-                    )}
-                  >
-                    <item.icon className="h-5 w-5 shrink-0" />
-                    {!sidebarCollapsed && <span>{item.label}</span>}
-                  </Link>
-                ))}
+                {userNavItems.map((item) => {
+                  // Use startsWith for routes with subroutes (e.g., /rewards/mine)
+                  const isActive = item.href === '/rewards'
+                    ? pathname.startsWith('/rewards')
+                    : pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={handleLinkClick}
+                      className={cn(
+                        // Touch-friendly: min-height 44px for mobile accessibility
+                        'flex items-center gap-3 rounded-lg px-3 py-3 min-h-[44px] text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent'
+                      )}
+                    >
+                      <item.icon className="h-5 w-5 shrink-0" />
+                      {!sidebarCollapsed && <span>{item.label}</span>}
+                    </Link>
+                  );
+                })}
               </div>
             </>
           )}

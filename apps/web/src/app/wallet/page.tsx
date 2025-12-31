@@ -8,6 +8,7 @@ import {
   CreditPackages,
   TransactionHistory,
   ActiveHolds,
+  RewardsCTA,
 } from '@/components/wallet';
 
 export default function WalletPage() {
@@ -30,6 +31,11 @@ export default function WalletPage() {
         {/* Balance cards */}
         <section>
           <WalletBalance />
+        </section>
+
+        {/* Rewards CTA */}
+        <section>
+          <RewardsCTA />
         </section>
 
         {/* Active holds */}
