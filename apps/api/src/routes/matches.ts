@@ -1281,4 +1281,182 @@ export async function matchRoutes(app: FastifyInstance) {
       } : null,
     };
   });
+
+  // GET /api/matches/:id/compare - Get match comparison with artifact details for both participants
+  app.get('/api/matches/:id/compare', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramResult = matchIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid match ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: matchId } = paramResult.data;
+
+    // Get match with challenge info
+    const [match] = await db
+      .select({
+        id: matches.id,
+        status: matches.status,
+        startAt: matches.startAt,
+        endAt: matches.endAt,
+      })
+      .from(matches)
+      .where(eq(matches.id, matchId));
+
+    if (!match) {
+      throw new NotFoundError('Match', matchId);
+    }
+
+    // Get participants with user details and submissions
+    const participantsList = await db
+      .select({
+        id: matchParticipants.id,
+        seat: matchParticipants.seat,
+        userId: matchParticipants.userId,
+        submissionId: matchParticipants.submissionId,
+        displayName: users.displayName,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(matchParticipants)
+      .innerJoin(users, eq(matchParticipants.userId, users.id))
+      .where(eq(matchParticipants.matchId, matchId));
+
+    if (participantsList.length < 2) {
+      throw new ValidationError('Match does not have two participants yet');
+    }
+
+    // Get submissions and artifacts for each participant
+    const { submissions, artifacts, scores: scoresTable } = schema;
+
+    const submissionsList = await db
+      .select({
+        id: submissions.id,
+        userId: submissions.userId,
+        submittedAt: submissions.submittedAt,
+        artifactId: submissions.artifactId,
+        artifact: {
+          id: artifacts.id,
+          contentHash: artifacts.contentHash,
+          storageKey: artifacts.storageKey,
+          sizeBytes: artifacts.sizeBytes,
+          createdAt: artifacts.createdAt,
+          secretScanStatus: artifacts.secretScanStatus,
+          isPublicBlocked: artifacts.isPublicBlocked,
+          manifestJson: artifacts.manifestJson,
+        },
+      })
+      .from(submissions)
+      .innerJoin(artifacts, eq(submissions.artifactId, artifacts.id))
+      .where(eq(submissions.matchId, matchId));
+
+    // Get scores for this match
+    const scoresList = await db
+      .select({
+        id: scoresTable.id,
+        userId: scoresTable.userId,
+        totalScore: scoresTable.totalScore,
+        breakdownJson: scoresTable.breakdownJson,
+      })
+      .from(scoresTable)
+      .where(eq(scoresTable.matchId, matchId));
+
+    // Build comparison structure
+    type ParticipantWithArtifact = {
+      userId: string;
+      displayName: string;
+      avatarUrl: string | null;
+      seat: string;
+      artifact: typeof submissionsList[0]['artifact'] | null;
+      score: {
+        totalScore: number;
+        breakdown: Array<{ requirementId: string; title: string; score: number; maxScore: number }>;
+      } | null;
+      isWinner: boolean;
+    };
+
+    const participantsWithArtifacts: ParticipantWithArtifact[] = participantsList.map((p) => {
+      const submission = submissionsList.find((s) => s.userId === p.userId);
+      const score = scoresList.find((s) => s.userId === p.userId);
+
+      return {
+        userId: p.userId,
+        displayName: p.displayName,
+        avatarUrl: p.avatarUrl,
+        seat: p.seat,
+        artifact: submission?.artifact || null,
+        score: score ? {
+          totalScore: score.totalScore,
+          breakdown: (score.breakdownJson as Array<{ requirementId: string; title: string; score: number; maxScore: number }>) || [],
+        } : null,
+        isWinner: false,
+      };
+    });
+
+    // Determine winner if match is finalized
+    if (match.status === 'finalized' && participantsWithArtifacts.length === 2) {
+      const [p1, p2] = participantsWithArtifacts;
+      const s1 = p1.score?.totalScore ?? 0;
+      const s2 = p2.score?.totalScore ?? 0;
+
+      if (s1 > s2) {
+        p1.isWinner = true;
+      } else if (s2 > s1) {
+        p2.isWinner = true;
+      }
+      // If tied, neither is winner (tie-breaker logic handled in /results endpoint)
+    }
+
+    // Build file comparison if both have artifacts
+    let comparison = null;
+    if (participantsWithArtifacts[0].artifact && participantsWithArtifacts[1].artifact) {
+      const leftManifest = participantsWithArtifacts[0].artifact.manifestJson as { files?: Array<{ path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean }> } | null;
+      const rightManifest = participantsWithArtifacts[1].artifact.manifestJson as { files?: Array<{ path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean }> } | null;
+
+      const leftFiles = leftManifest?.files || [];
+      const rightFiles = rightManifest?.files || [];
+
+      const leftPaths = new Set(leftFiles.map((f) => f.path));
+      const rightPaths = new Set(rightFiles.map((f) => f.path));
+
+      const added = rightFiles.filter((f) => !leftPaths.has(f.path)).map((f) => f.path);
+      const removed = leftFiles.filter((f) => !rightPaths.has(f.path)).map((f) => f.path);
+      const modified: string[] = [];
+      const unchanged: string[] = [];
+
+      for (const leftFile of leftFiles) {
+        if (rightPaths.has(leftFile.path)) {
+          const rightFile = rightFiles.find((f) => f.path === leftFile.path);
+          if (rightFile && leftFile.hash !== rightFile.hash) {
+            modified.push(leftFile.path);
+          } else {
+            unchanged.push(leftFile.path);
+          }
+        }
+      }
+
+      comparison = {
+        added,
+        removed,
+        modified,
+        unchanged,
+        totalFiles: {
+          left: leftFiles.length,
+          right: rightFiles.length,
+        },
+      };
+    }
+
+    // Determine left and right participants by seat
+    const leftParticipant = participantsWithArtifacts.find((p) => p.seat === 'A') || participantsWithArtifacts[0];
+    const rightParticipant = participantsWithArtifacts.find((p) => p.seat === 'B') || participantsWithArtifacts[1];
+
+    return {
+      matchId,
+      leftParticipant,
+      rightParticipant,
+      comparison,
+    };
+  });
 }

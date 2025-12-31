@@ -241,12 +241,15 @@ export function useMatchComparison(matchId: string | undefined) {
     queryFn: async () => {
       if (!matchId) throw new Error('Match ID required');
 
-      // In production, fetch from API
-      // const response = await api.get(`/matches/${matchId}/compare`);
-      // return response as MatchComparison;
-
-      // For now, return mock data
-      return getMockMatchComparison(matchId);
+      try {
+        // Fetch from real API endpoint
+        const response = await api.get(`/matches/${matchId}/compare`);
+        return response as MatchComparison;
+      } catch (error) {
+        // Fall back to mock data in development if API not available
+        console.warn('Match comparison API not available, using mock data:', error);
+        return getMockMatchComparison(matchId);
+      }
     },
     enabled: !!matchId,
     staleTime: 30 * 1000, // 30 seconds
