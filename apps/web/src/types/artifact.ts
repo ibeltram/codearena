@@ -210,6 +210,114 @@ export function formatFileSize(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${units[i]}`;
 }
 
+// Types for artifact comparison
+export type FileDiffStatus = 'unchanged' | 'modified' | 'added' | 'removed';
+
+export interface CompareFile {
+  path: string;
+  status: FileDiffStatus;
+  leftFile?: ManifestFile;
+  rightFile?: ManifestFile;
+  leftContent?: string;
+  rightContent?: string;
+}
+
+export interface ArtifactComparison {
+  leftArtifact: Artifact;
+  rightArtifact: Artifact;
+  files: CompareFile[];
+  summary: {
+    unchanged: number;
+    modified: number;
+    added: number;
+    removed: number;
+  };
+}
+
+export interface SubmissionScore {
+  totalScore: number;
+  breakdown: {
+    requirementId: string;
+    title: string;
+    score: number;
+    maxScore: number;
+    evidence?: string;
+  }[];
+}
+
+export interface MatchComparison {
+  matchId: string;
+  leftParticipant: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    seat: 'A' | 'B';
+    artifact: Artifact;
+    score?: SubmissionScore;
+    isWinner?: boolean;
+  };
+  rightParticipant: {
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    seat: 'A' | 'B';
+    artifact: Artifact;
+    score?: SubmissionScore;
+    isWinner?: boolean;
+  };
+  comparison: ArtifactComparison;
+}
+
+// Helper function to compare two artifacts and generate diff
+export function compareArtifacts(
+  leftArtifact: Artifact,
+  rightArtifact: Artifact
+): ArtifactComparison {
+  const leftFiles = new Map(
+    leftArtifact.manifestJson.files.map((f) => [f.path, f])
+  );
+  const rightFiles = new Map(
+    rightArtifact.manifestJson.files.map((f) => [f.path, f])
+  );
+
+  const allPaths = new Set([...leftFiles.keys(), ...rightFiles.keys()]);
+  const files: CompareFile[] = [];
+  const summary = { unchanged: 0, modified: 0, added: 0, removed: 0 };
+
+  for (const path of allPaths) {
+    const leftFile = leftFiles.get(path);
+    const rightFile = rightFiles.get(path);
+
+    let status: FileDiffStatus;
+    if (leftFile && rightFile) {
+      status = leftFile.hash === rightFile.hash ? 'unchanged' : 'modified';
+    } else if (leftFile) {
+      status = 'removed';
+    } else {
+      status = 'added';
+    }
+
+    summary[status]++;
+    files.push({ path, status, leftFile, rightFile });
+  }
+
+  // Sort: modified first, then added, removed, unchanged - all alphabetically within
+  files.sort((a, b) => {
+    const order = { modified: 0, added: 1, removed: 2, unchanged: 3 };
+    if (order[a.status] !== order[b.status]) {
+      return order[a.status] - order[b.status];
+    }
+    return a.path.localeCompare(b.path);
+  });
+
+  return {
+    leftArtifact,
+    rightArtifact,
+    files,
+    summary,
+  };
+}
+
 // Get file icon based on type
 export function getFileIcon(node: FileTreeNode): string {
   if (node.isDirectory) return '📁';
