@@ -25,6 +25,12 @@ import {
   ForbiddenError,
   ConflictError,
 } from '../lib/errors';
+import {
+  generateStorageKey as generateContentAddressedKey,
+  getSecretSummary,
+  shouldBlockPublicViewing,
+  type SecretScanResult,
+} from '../lib/artifact-processor';
 
 const {
   matches,
@@ -1125,6 +1131,255 @@ export async function submissionRoutes(app: FastifyInstance) {
         id: submissionId,
         lockedAt: now.toISOString(),
         message: 'Submission locked successfully. It can no longer be modified.',
+      };
+    }
+  );
+
+  /**
+   * POST /api/matches/:id/submissions/lock
+   * Lock a submission by match ID (used by extension)
+   */
+  app.post(
+    '/api/matches/:id/submissions/lock',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              lockedAt: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = getUserId(request);
+
+      const paramResult = matchIdParamSchema.safeParse(request.params);
+      if (!paramResult.success) {
+        throw new ValidationError('Invalid match ID', {
+          issues: paramResult.error.issues,
+        });
+      }
+
+      const { id: matchId } = paramResult.data;
+
+      // Find the user's submission for this match
+      const [submission] = await db
+        .select()
+        .from(submissions)
+        .where(
+          and(
+            eq(submissions.matchId, matchId),
+            eq(submissions.userId, userId)
+          )
+        );
+
+      if (!submission) {
+        throw new NotFoundError('Submission for this match');
+      }
+
+      // Check if already locked
+      if (submission.lockedAt) {
+        return {
+          lockedAt: submission.lockedAt.toISOString(),
+          message: 'Submission was already locked.',
+        };
+      }
+
+      // Verify match is still in progress
+      const [match] = await db
+        .select()
+        .from(matches)
+        .where(eq(matches.id, matchId));
+
+      if (!match) {
+        throw new NotFoundError('Match', matchId);
+      }
+
+      if (match.status !== 'in_progress') {
+        throw new ConflictError(`Cannot lock submission: match status is '${match.status}'`);
+      }
+
+      // Lock the submission
+      const now = new Date();
+      await db
+        .update(submissions)
+        .set({ lockedAt: now })
+        .where(eq(submissions.id, submission.id));
+
+      return {
+        lockedAt: now.toISOString(),
+        message: 'Submission locked successfully. It can no longer be modified.',
+      };
+    }
+  );
+
+  /**
+   * GET /api/artifacts/:id
+   * Get artifact details including secret scan status
+   */
+  app.get(
+    '/api/artifacts/:id',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              contentHash: { type: 'string' },
+              storageKey: { type: 'string' },
+              sizeBytes: { type: 'number' },
+              createdAt: { type: 'string' },
+              secretScanStatus: { type: 'string' },
+              manifestJson: { type: 'object' },
+              isPublicBlocked: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = request.params as { id: string };
+
+      const [artifact] = await db
+        .select()
+        .from(artifacts)
+        .where(eq(artifacts.id, params.id));
+
+      if (!artifact) {
+        throw new NotFoundError('Artifact', params.id);
+      }
+
+      // Block public viewing if flagged
+      const isPublicBlocked = artifact.secretScanStatus === 'flagged';
+
+      return {
+        id: artifact.id,
+        contentHash: artifact.contentHash,
+        storageKey: artifact.storageKey,
+        sizeBytes: artifact.sizeBytes,
+        createdAt: artifact.createdAt.toISOString(),
+        secretScanStatus: artifact.secretScanStatus,
+        manifestJson: artifact.manifestJson,
+        isPublicBlocked,
+      };
+    }
+  );
+
+  /**
+   * POST /api/artifacts/:id/scan
+   * Trigger secret scan on an artifact (admin/internal use)
+   * In production, this would be triggered automatically via queue
+   */
+  app.post(
+    '/api/artifacts/:id/scan',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              artifactId: { type: 'string' },
+              status: { type: 'string' },
+              findingsCount: { type: 'number' },
+              summary: { type: 'string' },
+              isPublicBlocked: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = request.params as { id: string };
+
+      const [artifact] = await db
+        .select()
+        .from(artifacts)
+        .where(eq(artifacts.id, params.id));
+
+      if (!artifact) {
+        throw new NotFoundError('Artifact', params.id);
+      }
+
+      // In a real implementation, we would:
+      // 1. Download the artifact from S3
+      // 2. Extract the zip
+      // 3. Scan each file for secrets
+      // 4. Update the artifact record with scan results
+
+      // For now, simulate based on manifest content
+      const manifest = artifact.manifestJson as any;
+      const files = manifest?.files || manifest?.parts || [];
+
+      // Mock scan result - in production, use the artifact processor
+      const mockScanResult: SecretScanResult = {
+        status: 'clean',
+        findings: [],
+        scannedAt: new Date().toISOString(),
+        scannedFiles: files.length,
+        skippedFiles: 0,
+      };
+
+      // Check file names for obvious issues
+      for (const file of files) {
+        const filePath = file.path || file.filename || '';
+        if (
+          filePath.includes('.env') ||
+          filePath.includes('credentials') ||
+          filePath.includes('secret')
+        ) {
+          mockScanResult.status = 'flagged';
+          mockScanResult.findings.push({
+            file: filePath,
+            type: 'credential_file',
+            severity: 'high',
+            description: 'Potentially sensitive file detected',
+          });
+        }
+      }
+
+      // Update artifact with scan results
+      await db
+        .update(artifacts)
+        .set({
+          secretScanStatus: mockScanResult.status,
+        })
+        .where(eq(artifacts.id, params.id));
+
+      const summary = getSecretSummary(mockScanResult);
+      const isPublicBlocked = shouldBlockPublicViewing(mockScanResult);
+
+      return {
+        artifactId: artifact.id,
+        status: mockScanResult.status,
+        findingsCount: mockScanResult.findings.length,
+        summary,
+        isPublicBlocked,
       };
     }
   );
