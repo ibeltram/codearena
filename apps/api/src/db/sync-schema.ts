@@ -119,6 +119,11 @@ async function syncSchema() {
       END $$;
 
       DO $$ BEGIN
+        CREATE TYPE audit_event_category AS ENUM('auth', 'admin', 'moderation', 'payment', 'match', 'submission', 'challenge', 'tournament', 'reward', 'system');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;
+
+      DO $$ BEGIN
         CREATE TYPE reward_type AS ENUM('saas_offset', 'compute_credit');
       EXCEPTION WHEN duplicate_object THEN null;
       END $$;
@@ -429,12 +434,26 @@ async function syncSchema() {
       CREATE TABLE IF NOT EXISTS events_audit (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
         actor_user_id uuid REFERENCES users(id),
+        category audit_event_category NOT NULL,
         event_type varchar(100) NOT NULL,
         entity_type varchar(100) NOT NULL,
         entity_id uuid NOT NULL,
+        ip_address varchar(45),
+        user_agent varchar(500),
+        request_id varchar(64),
         payload_json jsonb DEFAULT '{}'::jsonb NOT NULL,
         created_at timestamp with time zone DEFAULT now() NOT NULL
       );
+
+      -- Audit event indexes for efficient querying
+      CREATE INDEX IF NOT EXISTS events_audit_actor_user_id_idx ON events_audit(actor_user_id);
+      CREATE INDEX IF NOT EXISTS events_audit_category_idx ON events_audit(category);
+      CREATE INDEX IF NOT EXISTS events_audit_event_type_idx ON events_audit(event_type);
+      CREATE INDEX IF NOT EXISTS events_audit_entity_type_idx ON events_audit(entity_type);
+      CREATE INDEX IF NOT EXISTS events_audit_entity_id_idx ON events_audit(entity_id);
+      CREATE INDEX IF NOT EXISTS events_audit_created_at_idx ON events_audit(created_at);
+      CREATE INDEX IF NOT EXISTS events_audit_category_created_at_idx ON events_audit(category, created_at);
+      CREATE INDEX IF NOT EXISTS events_audit_actor_created_at_idx ON events_audit(actor_user_id, created_at);
 
       CREATE TABLE IF NOT EXISTS moderation_actions (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

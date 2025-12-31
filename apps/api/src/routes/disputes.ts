@@ -20,13 +20,13 @@ import {
   ForbiddenError,
   ConflictError,
 } from '../lib/errors';
+import { auditModeration, AuditEventTypes } from '../lib/audit-service';
 
 const {
   disputes,
   matches,
   matchParticipants,
   users,
-  eventsAudit,
 } = schema;
 
 // Constants
@@ -182,17 +182,17 @@ export async function disputeRoutes(app: FastifyInstance) {
       .where(eq(matches.id, matchId));
 
     // Create audit event
-    await db.insert(eventsAudit).values({
-      actorUserId: userId,
-      eventType: 'dispute_created',
-      entityType: 'dispute',
-      entityId: newDispute.id,
-      payloadJson: {
+    await auditModeration(
+      AuditEventTypes.moderation.DISPUTE_OPEN,
+      userId, // Target is the user opening the dispute
+      {
+        disputeId: newDispute.id,
         matchId,
         reason,
         hasEvidence: Object.keys(evidence).length > 0,
       },
-    });
+      request
+    );
 
     return reply.status(201).send({
       id: newDispute.id,

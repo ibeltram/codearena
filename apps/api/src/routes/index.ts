@@ -16,6 +16,7 @@ import { tournamentRoutes } from './tournaments';
 import { disputeRoutes } from './disputes';
 import ratingsRoutes from './ratings';
 import { rewardRoutes } from './rewards';
+import { adminAuditRoutes } from './admin-audit';
 import { initializeMatchEvents } from '../lib/match-events';
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -69,4 +70,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Admin API routes (TODO: add auth middleware)
   await app.register(adminRoutes);
+
+  // Admin audit log routes
+  await app.register(adminAuditRoutes);
 }

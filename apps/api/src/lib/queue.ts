@@ -100,7 +100,7 @@ export interface SettlementJobData extends BaseJobData {
 }
 
 export interface CleanupJobData extends BaseJobData {
-  type: 'archive_matches' | 'clear_cache' | 'expire_sessions' | 'prune_artifacts';
+  type: 'archive_matches' | 'clear_cache' | 'expire_sessions' | 'prune_artifacts' | 'audit_retention';
   olderThanDays?: number;
   dryRun?: boolean;
 }
@@ -769,6 +769,12 @@ export async function setupScheduledJobs(): Promise<void> {
   await addCleanupJob(
     { type: 'prune_artifacts', olderThanDays: 180 },
     { repeat: { pattern: '0 4 * * 0' } }
+  );
+
+  // Audit retention cleanup - daily at 1am, 90-day retention
+  await addCleanupJob(
+    { type: 'audit_retention', olderThanDays: 90 },
+    { repeat: { pattern: '0 1 * * *' } }
   );
 
   logger.info('Scheduled cleanup jobs configured');
