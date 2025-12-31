@@ -32,8 +32,9 @@ import {
   MatchModeBadge,
   ConnectionStatusIndicator,
   LiveBadge,
+  JudgingResults,
 } from '@/components/matches';
-import { useMatch, useReadyUp, useForfeit, useMatchEvents } from '@/hooks';
+import { useMatch, useReadyUp, useForfeit, useMatchEvents, useMatchResults } from '@/hooks';
 import { categoryLabels, categoryColors, difficultyLabels, difficultyColors } from '@/types/challenge';
 import { cn } from '@/lib/utils';
 
@@ -48,6 +49,12 @@ export default function MatchDetailPage() {
   const { data: match, isLoading, isError, error } = useMatch(matchId);
   const readyMutation = useReadyUp();
   const forfeitMutation = useForfeit();
+
+  // Fetch results for finalized/judging matches
+  const shouldFetchResults = match && ['judging', 'finalized', 'archived'].includes(match.status);
+  const { data: matchResults, isLoading: resultsLoading } = useMatchResults(
+    shouldFetchResults ? matchId : undefined
+  );
 
   // SSE real-time events - keep track of live timer from server
   const [liveTimerRemaining, setLiveTimerRemaining] = useState<number | null>(null);
@@ -235,37 +242,71 @@ export default function MatchDetailPage() {
                 )}
 
                 {status === 'finalized' && (
-                  <Button variant="outline" className="gap-2">
-                    <Gavel className="h-4 w-4" />
-                    View Results
-                  </Button>
+                  <Badge variant="secondary" className="gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Match Complete
+                  </Badge>
                 )}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Participants */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {participantA ? (
-            <ParticipantCard
-              participant={participantA}
-              isCurrentUser={participantA.user.id === MOCK_USER_ID}
-              matchStatus={status}
-            />
-          ) : (
-            <EmptyParticipantSlot seat="A" />
-          )}
-          {participantB ? (
-            <ParticipantCard
-              participant={participantB}
-              isCurrentUser={participantB.user.id === MOCK_USER_ID}
-              matchStatus={status}
-            />
-          ) : (
-            <EmptyParticipantSlot seat="B" />
-          )}
-        </div>
+        {/* Participants - only show if not finalized (results will show participants) */}
+        {!['judging', 'finalized', 'archived'].includes(status) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {participantA ? (
+              <ParticipantCard
+                participant={participantA}
+                isCurrentUser={participantA.user.id === MOCK_USER_ID}
+                matchStatus={status}
+              />
+            ) : (
+              <EmptyParticipantSlot seat="A" />
+            )}
+            {participantB ? (
+              <ParticipantCard
+                participant={participantB}
+                isCurrentUser={participantB.user.id === MOCK_USER_ID}
+                matchStatus={status}
+              />
+            ) : (
+              <EmptyParticipantSlot seat="B" />
+            )}
+          </div>
+        )}
+
+        {/* Judging Results - show for finalized/judging/archived matches */}
+        {['judging', 'finalized', 'archived'].includes(status) && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gavel className="h-5 w-5" />
+                  {status === 'judging' ? 'Judging in Progress...' : 'Match Results'}
+                </CardTitle>
+                {status === 'judging' && (
+                  <CardDescription>
+                    Submissions are being evaluated. Results will appear shortly.
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                {matchResults ? (
+                  <JudgingResults results={matchResults} isLoading={resultsLoading} />
+                ) : resultsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">
+                    Results are being calculated...
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Challenge details */}
         <Card>

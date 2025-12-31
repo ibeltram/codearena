@@ -20,6 +20,15 @@ export {
   useJoinMatch,
   useReadyUp,
   useForfeit,
+  useMatchResults,
+  type MatchResults,
+  type ParticipantWithScore,
+  type ParticipantScore,
+  type ScoreBreakdown,
+  type RequirementResult,
+  type RequirementCheck,
+  type MatchResultsWinner,
+  type JudgementRunInfo,
 } from './use-match';
 export {
   useMatchEvents,

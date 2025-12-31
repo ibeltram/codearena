@@ -184,3 +184,81 @@ export function useForfeit() {
     },
   });
 }
+
+// Match results types
+export interface RequirementCheck {
+  id: string;
+  name: string;
+  passed: boolean;
+  points: number;
+  maxPoints: number;
+}
+
+export interface RequirementResult {
+  id: string;
+  name: string;
+  score: number;
+  maxScore: number;
+  checks: RequirementCheck[];
+}
+
+export interface ScoreBreakdown {
+  requirements: { id: string; name: string; score: number; maxScore: number; weight: number }[];
+  buildSuccess: boolean;
+}
+
+export interface ParticipantScore {
+  totalScore: number;
+  breakdown: ScoreBreakdown;
+  automatedResults: { requirements: RequirementResult[] };
+  aiJudgeResults: unknown | null;
+  createdAt: string;
+}
+
+export interface ParticipantWithScore {
+  id: string;
+  seat: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  score: ParticipantScore | null;
+}
+
+export interface MatchResultsWinner {
+  id: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  seat: string;
+  totalScore: number;
+}
+
+export interface JudgementRunInfo {
+  id: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  logsKey: string | null;
+}
+
+export interface MatchResults {
+  matchId: string;
+  status: string;
+  startAt: string | null;
+  endAt: string | null;
+  participants: ParticipantWithScore[];
+  winner: MatchResultsWinner | null;
+  isTie: boolean;
+  tieBreaker: string | null;
+  judgementRun: JudgementRunInfo | null;
+}
+
+// Fetch match results
+export function useMatchResults(matchId: string | undefined) {
+  return useQuery({
+    queryKey: ['match-results', matchId],
+    queryFn: () => api.get<MatchResults>(`/api/matches/${matchId}/results`),
+    enabled: !!matchId,
+    staleTime: 60 * 1000, // 1 minute - results don't change often
+  });
+}

@@ -1107,4 +1107,145 @@ export async function matchRoutes(app: FastifyInstance) {
       canCancel: canCancel(currentStatus),
     };
   });
+
+  // GET /api/matches/:id/results - Get judging results for a finalized match
+  app.get('/api/matches/:id/results', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramResult = matchIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid match ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: matchId } = paramResult.data;
+
+    // Get match with participants
+    const [match] = await db
+      .select({
+        id: matches.id,
+        status: matches.status,
+        startAt: matches.startAt,
+        endAt: matches.endAt,
+      })
+      .from(matches)
+      .where(eq(matches.id, matchId));
+
+    if (!match) {
+      throw new NotFoundError('Match', matchId);
+    }
+
+    // Get participants with user details
+    const participantsList = await db
+      .select({
+        id: matchParticipants.id,
+        seat: matchParticipants.seat,
+        userId: matchParticipants.userId,
+        displayName: users.displayName,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(matchParticipants)
+      .innerJoin(users, eq(matchParticipants.userId, users.id))
+      .where(eq(matchParticipants.matchId, matchId));
+
+    // Get scores for this match
+    const { scores: scoresTable, judgementRuns } = schema;
+    const scoresList = await db
+      .select({
+        id: scoresTable.id,
+        userId: scoresTable.userId,
+        totalScore: scoresTable.totalScore,
+        breakdownJson: scoresTable.breakdownJson,
+        automatedResultsJson: scoresTable.automatedResultsJson,
+        aiJudgeResultsJson: scoresTable.aiJudgeResultsJson,
+        createdAt: scoresTable.createdAt,
+        judgementRunId: scoresTable.judgementRunId,
+      })
+      .from(scoresTable)
+      .where(eq(scoresTable.matchId, matchId));
+
+    // Get the latest judgement run
+    const [latestRun] = await db
+      .select()
+      .from(judgementRuns)
+      .where(eq(judgementRuns.matchId, matchId))
+      .orderBy(desc(judgementRuns.startedAt))
+      .limit(1);
+
+    // Combine participants with their scores
+    const participantsWithScores = participantsList.map((p) => {
+      const score = scoresList.find((s) => s.userId === p.userId);
+      return {
+        ...p,
+        score: score ? {
+          totalScore: score.totalScore,
+          breakdown: score.breakdownJson,
+          automatedResults: score.automatedResultsJson,
+          aiJudgeResults: score.aiJudgeResultsJson,
+          createdAt: score.createdAt,
+        } : null,
+      };
+    });
+
+    // Determine winner (if match is finalized)
+    let winner: typeof participantsWithScores[0] | null = null;
+    let isTie = false;
+    let tieBreaker: string | null = null;
+
+    if (match.status === 'finalized' && participantsWithScores.length === 2) {
+      const [p1, p2] = participantsWithScores;
+      const s1 = p1.score?.totalScore ?? 0;
+      const s2 = p2.score?.totalScore ?? 0;
+
+      if (s1 > s2) {
+        winner = p1;
+      } else if (s2 > s1) {
+        winner = p2;
+      } else {
+        // Tie - check tie-breakers from breakdown
+        isTie = true;
+        const b1 = p1.score?.breakdown as { buildSuccess?: boolean } | undefined;
+        const b2 = p2.score?.breakdown as { buildSuccess?: boolean } | undefined;
+
+        // Tie-breaker 1: Build success
+        if (b1?.buildSuccess && !b2?.buildSuccess) {
+          winner = p1;
+          tieBreaker = 'Build success';
+          isTie = false;
+        } else if (b2?.buildSuccess && !b1?.buildSuccess) {
+          winner = p2;
+          tieBreaker = 'Build success';
+          isTie = false;
+        }
+
+        // If still tied, could add more tie-breakers here
+        // (submission time, test count, etc.)
+      }
+    }
+
+    return {
+      matchId,
+      status: match.status,
+      startAt: match.startAt,
+      endAt: match.endAt,
+      participants: participantsWithScores,
+      winner: winner ? {
+        id: winner.id,
+        userId: winner.userId,
+        displayName: winner.displayName,
+        avatarUrl: winner.avatarUrl,
+        seat: winner.seat,
+        totalScore: winner.score?.totalScore ?? 0,
+      } : null,
+      isTie,
+      tieBreaker,
+      judgementRun: latestRun ? {
+        id: latestRun.id,
+        status: latestRun.status,
+        startedAt: latestRun.startedAt,
+        completedAt: latestRun.completedAt,
+        logsKey: latestRun.logsKey,
+      } : null,
+    };
+  });
 }
