@@ -24,9 +24,9 @@ import {
 } from '../lib/match-state-machine';
 import { validateStakeAmount } from '../lib/rating-service';
 import {
-  compareTieBreakers,
-  determineWinner as scoringDetermineWinner,
+  determineWinnerWithExplanation,
   type ScoringResult,
+  type WinnerDeterminationResult,
 } from '../lib/scoring-engine';
 
 const {
@@ -1202,76 +1202,57 @@ export async function matchRoutes(app: FastifyInstance) {
       const s1 = p1.score?.totalScore ?? 0;
       const s2 = p2.score?.totalScore ?? 0;
 
-      if (s1 > s2) {
+      // Extract tie-breaker data from breakdown
+      const b1 = p1.score?.breakdown as {
+        buildSuccess?: boolean;
+        requirements?: Array<{ testsMatched?: number; testsPassed?: number }>;
+      } | undefined;
+      const b2 = p2.score?.breakdown as {
+        buildSuccess?: boolean;
+        requirements?: Array<{ testsMatched?: number; testsPassed?: number }>;
+      } | undefined;
+
+      // Create scoring results for winner determination
+      const scoring1: ScoringResult = {
+        totalScore: s1,
+        maxScore: 100,
+        requirements: [],
+        tieBreakers: {
+          testsPassed: b1?.requirements?.reduce((sum, r) => sum + (r.testsPassed || 0), 0) || 0,
+          criticalErrors: b1?.buildSuccess === false ? 10 : 0,
+          submitTime: p1.score?.createdAt ? new Date(p1.score.createdAt) : undefined,
+        },
+        metadata: { scoredAt: new Date(), engineVersion: '1.0.0', duration: 0 },
+      };
+
+      const scoring2: ScoringResult = {
+        totalScore: s2,
+        maxScore: 100,
+        requirements: [],
+        tieBreakers: {
+          testsPassed: b2?.requirements?.reduce((sum, r) => sum + (r.testsPassed || 0), 0) || 0,
+          criticalErrors: b2?.buildSuccess === false ? 10 : 0,
+          submitTime: p2.score?.createdAt ? new Date(p2.score.createdAt) : undefined,
+        },
+        metadata: { scoredAt: new Date(), engineVersion: '1.0.0', duration: 0 },
+      };
+
+      // Use scoring engine to determine winner with detailed explanation
+      const tieBreakersOrder = ['tests_passed', 'critical_errors', 'submit_time'];
+      const result = determineWinnerWithExplanation(scoring1, scoring2, tieBreakersOrder);
+
+      if (result.winner === 'A') {
         winner = p1;
-      } else if (s2 > s1) {
+        isTie = false;
+        tieBreaker = result.tieBreaker;
+      } else if (result.winner === 'B') {
         winner = p2;
+        isTie = false;
+        tieBreaker = result.tieBreaker;
       } else {
-        // Tie - use scoring engine tie-breakers
+        // True tie - no winner could be determined
         isTie = true;
-
-        // Extract tie-breaker data from breakdown
-        const b1 = p1.score?.breakdown as {
-          buildSuccess?: boolean;
-          requirements?: Array<{ testsMatched?: number; testsPassed?: number }>;
-        } | undefined;
-        const b2 = p2.score?.breakdown as {
-          buildSuccess?: boolean;
-          requirements?: Array<{ testsMatched?: number; testsPassed?: number }>;
-        } | undefined;
-
-        // Create scoring results for tie-breaker comparison
-        const scoring1: ScoringResult = {
-          totalScore: s1,
-          maxScore: 100,
-          requirements: [],
-          tieBreakers: {
-            testsPassed: b1?.requirements?.reduce((sum, r) => sum + (r.testsPassed || 0), 0) || 0,
-            criticalErrors: b1?.buildSuccess === false ? 10 : 0,
-            submitTime: undefined, // Would need submission timestamps
-          },
-          metadata: { scoredAt: new Date(), engineVersion: '1.0.0', duration: 0 },
-        };
-
-        const scoring2: ScoringResult = {
-          totalScore: s2,
-          maxScore: 100,
-          requirements: [],
-          tieBreakers: {
-            testsPassed: b2?.requirements?.reduce((sum, r) => sum + (r.testsPassed || 0), 0) || 0,
-            criticalErrors: b2?.buildSuccess === false ? 10 : 0,
-            submitTime: undefined,
-          },
-          metadata: { scoredAt: new Date(), engineVersion: '1.0.0', duration: 0 },
-        };
-
-        // Use scoring engine tie-breaker order
-        const tieBreakersOrder = ['tests_passed', 'critical_errors', 'submit_time'];
-        const comparison = compareTieBreakers(scoring1, scoring2, tieBreakersOrder);
-
-        if (comparison < 0) {
-          winner = p1;
-          isTie = false;
-          // Determine which tie-breaker was decisive
-          if (scoring1.tieBreakers.testsPassed > scoring2.tieBreakers.testsPassed) {
-            tieBreaker = `More tests passed (${scoring1.tieBreakers.testsPassed} vs ${scoring2.tieBreakers.testsPassed})`;
-          } else if (scoring1.tieBreakers.criticalErrors < scoring2.tieBreakers.criticalErrors) {
-            tieBreaker = 'Fewer critical errors';
-          } else {
-            tieBreaker = 'Earlier submission';
-          }
-        } else if (comparison > 0) {
-          winner = p2;
-          isTie = false;
-          if (scoring2.tieBreakers.testsPassed > scoring1.tieBreakers.testsPassed) {
-            tieBreaker = `More tests passed (${scoring2.tieBreakers.testsPassed} vs ${scoring1.tieBreakers.testsPassed})`;
-          } else if (scoring2.tieBreakers.criticalErrors < scoring1.tieBreakers.criticalErrors) {
-            tieBreaker = 'Fewer critical errors';
-          } else {
-            tieBreaker = 'Earlier submission';
-          }
-        }
-        // If still tied after all tie-breakers, isTie remains true
+        tieBreaker = null;
       }
     }
 

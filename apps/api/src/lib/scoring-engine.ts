@@ -1033,21 +1033,169 @@ export function compareTieBreakers(
 }
 
 /**
- * Determine winner between two participants
+ * Result of determining a winner with explanation
+ */
+export interface WinnerDeterminationResult {
+  winner: 'A' | 'B' | 'tie';
+  decidedBy: 'score' | 'tiebreaker' | 'true_tie';
+  tieBreaker: string | null;
+  explanation: string;
+  details: {
+    scoreA: number;
+    scoreB: number;
+    tieBreakerUsed?: string;
+    tieBreakerValueA?: number | string;
+    tieBreakerValueB?: number | string;
+  };
+}
+
+/**
+ * Generate tie-breaker explanation for a specific criterion
+ */
+function getTieBreakerExplanation(
+  criterion: string,
+  valueA: number | Date | undefined,
+  valueB: number | Date | undefined,
+  winnerIs: 'A' | 'B'
+): string {
+  switch (criterion) {
+    case 'tests_passed':
+      return `More tests passed (${winnerIs === 'A' ? valueA : valueB} vs ${winnerIs === 'A' ? valueB : valueA})`;
+    case 'critical_errors':
+      return `Fewer critical errors (${winnerIs === 'A' ? valueA : valueB} vs ${winnerIs === 'A' ? valueB : valueA})`;
+    case 'submit_time':
+      return 'Earlier submission time';
+    default:
+      return `Won by ${criterion}`;
+  }
+}
+
+/**
+ * Determine winner between two participants with detailed explanation
+ */
+export function determineWinnerWithExplanation(
+  scoreA: ScoringResult,
+  scoreB: ScoringResult,
+  tieBreakers: string[] = ['tests_passed', 'critical_errors', 'submit_time']
+): WinnerDeterminationResult {
+  // First compare total scores
+  if (scoreA.totalScore > scoreB.totalScore) {
+    return {
+      winner: 'A',
+      decidedBy: 'score',
+      tieBreaker: null,
+      explanation: `Won with higher score (${scoreA.totalScore} vs ${scoreB.totalScore})`,
+      details: {
+        scoreA: scoreA.totalScore,
+        scoreB: scoreB.totalScore,
+      },
+    };
+  }
+
+  if (scoreB.totalScore > scoreA.totalScore) {
+    return {
+      winner: 'B',
+      decidedBy: 'score',
+      tieBreaker: null,
+      explanation: `Won with higher score (${scoreB.totalScore} vs ${scoreA.totalScore})`,
+      details: {
+        scoreA: scoreA.totalScore,
+        scoreB: scoreB.totalScore,
+      },
+    };
+  }
+
+  // Scores are equal, use tie-breakers
+  for (const criterion of tieBreakers) {
+    switch (criterion) {
+      case 'tests_passed': {
+        const diff = scoreB.tieBreakers.testsPassed - scoreA.tieBreakers.testsPassed;
+        if (diff !== 0) {
+          const winnerIs = diff < 0 ? 'A' : 'B';
+          return {
+            winner: winnerIs,
+            decidedBy: 'tiebreaker',
+            tieBreaker: getTieBreakerExplanation(criterion, scoreA.tieBreakers.testsPassed, scoreB.tieBreakers.testsPassed, winnerIs),
+            explanation: `Tied at ${scoreA.totalScore} points. ${getTieBreakerExplanation(criterion, scoreA.tieBreakers.testsPassed, scoreB.tieBreakers.testsPassed, winnerIs)}`,
+            details: {
+              scoreA: scoreA.totalScore,
+              scoreB: scoreB.totalScore,
+              tieBreakerUsed: 'tests_passed',
+              tieBreakerValueA: scoreA.tieBreakers.testsPassed,
+              tieBreakerValueB: scoreB.tieBreakers.testsPassed,
+            },
+          };
+        }
+        break;
+      }
+
+      case 'critical_errors': {
+        const diff = scoreA.tieBreakers.criticalErrors - scoreB.tieBreakers.criticalErrors;
+        if (diff !== 0) {
+          const winnerIs = diff < 0 ? 'A' : 'B';
+          return {
+            winner: winnerIs,
+            decidedBy: 'tiebreaker',
+            tieBreaker: getTieBreakerExplanation(criterion, scoreA.tieBreakers.criticalErrors, scoreB.tieBreakers.criticalErrors, winnerIs),
+            explanation: `Tied at ${scoreA.totalScore} points. ${getTieBreakerExplanation(criterion, scoreA.tieBreakers.criticalErrors, scoreB.tieBreakers.criticalErrors, winnerIs)}`,
+            details: {
+              scoreA: scoreA.totalScore,
+              scoreB: scoreB.totalScore,
+              tieBreakerUsed: 'critical_errors',
+              tieBreakerValueA: scoreA.tieBreakers.criticalErrors,
+              tieBreakerValueB: scoreB.tieBreakers.criticalErrors,
+            },
+          };
+        }
+        break;
+      }
+
+      case 'submit_time': {
+        if (scoreA.tieBreakers.submitTime && scoreB.tieBreakers.submitTime) {
+          const diff = scoreA.tieBreakers.submitTime.getTime() - scoreB.tieBreakers.submitTime.getTime();
+          if (diff !== 0) {
+            const winnerIs = diff < 0 ? 'A' : 'B';
+            return {
+              winner: winnerIs,
+              decidedBy: 'tiebreaker',
+              tieBreaker: 'Earlier submission time',
+              explanation: `Tied at ${scoreA.totalScore} points. Won by submitting earlier`,
+              details: {
+                scoreA: scoreA.totalScore,
+                scoreB: scoreB.totalScore,
+                tieBreakerUsed: 'submit_time',
+                tieBreakerValueA: scoreA.tieBreakers.submitTime.toISOString(),
+                tieBreakerValueB: scoreB.tieBreakers.submitTime.toISOString(),
+              },
+            };
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // True tie - all tie-breakers exhausted
+  return {
+    winner: 'tie',
+    decidedBy: 'true_tie',
+    tieBreaker: null,
+    explanation: `True tie at ${scoreA.totalScore} points. All tie-breakers equal`,
+    details: {
+      scoreA: scoreA.totalScore,
+      scoreB: scoreB.totalScore,
+    },
+  };
+}
+
+/**
+ * Determine winner between two participants (simple version)
  */
 export function determineWinner(
   scoreA: ScoringResult,
   scoreB: ScoringResult,
   tieBreakers: string[] = ['tests_passed', 'critical_errors', 'submit_time']
 ): 'A' | 'B' | 'tie' {
-  // First compare total scores
-  if (scoreA.totalScore > scoreB.totalScore) return 'A';
-  if (scoreB.totalScore > scoreA.totalScore) return 'B';
-
-  // Scores are equal, use tie-breakers
-  const comparison = compareTieBreakers(scoreA, scoreB, tieBreakers);
-  if (comparison < 0) return 'A';
-  if (comparison > 0) return 'B';
-
-  return 'tie';
+  const result = determineWinnerWithExplanation(scoreA, scoreB, tieBreakers);
+  return result.winner;
 }
