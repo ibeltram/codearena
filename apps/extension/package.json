@@ -56,34 +56,137 @@
       "codearena": [
         {
           "id": "codearena-challenges",
-          "name": "Challenges"
+          "name": "Challenges",
+          "contextualTitle": "CodeArena Challenges"
         },
         {
           "id": "codearena-match",
-          "name": "Active Match"
+          "name": "Active Match",
+          "contextualTitle": "Current Match"
         },
         {
           "id": "codearena-history",
-          "name": "Recent Matches"
+          "name": "Recent Matches",
+          "contextualTitle": "Match History"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "codearena-challenges",
+        "contents": "Welcome to CodeArena!\n\nSign in to browse challenges and compete.\n\n[Sign In](command:codearena.signIn)"
+      },
+      {
+        "view": "codearena-match",
+        "contents": "No active match.\n\nJoin a challenge to start competing!\n\n[Browse Challenges](command:codearena.browseChallenges)"
+      },
+      {
+        "view": "codearena-history",
+        "contents": "No recent matches.\n\nComplete your first match to see history here."
+      }
+    ],
+    "configuration": {
+      "title": "CodeArena",
+      "properties": {
+        "codearena.apiUrl": {
+          "type": "string",
+          "default": "https://api.codearena.dev",
+          "description": "CodeArena API server URL"
+        },
+        "codearena.webUrl": {
+          "type": "string",
+          "default": "https://codearena.dev",
+          "description": "CodeArena web application URL"
+        },
+        "codearena.autoSubmit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically submit when match time expires (if not already submitted)"
+        },
+        "codearena.showTimerInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show match timer in the status bar during active matches"
+        },
+        "codearena.timerWarningMinutes": {
+          "type": "number",
+          "default": 5,
+          "description": "Show warning notification when this many minutes remain"
+        },
+        "codearena.excludePatterns": {
+          "type": "array",
+          "default": [
+            "node_modules/**",
+            ".git/**",
+            "dist/**",
+            "build/**",
+            ".env*",
+            "*.log"
+          ],
+          "description": "File patterns to exclude from submissions"
+        },
+        "codearena.maxSubmissionSizeMB": {
+          "type": "number",
+          "default": 50,
+          "description": "Maximum submission size in MB"
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "codearena.browseChallenges",
+          "when": "view == codearena-challenges",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "codearena.joinMatch",
+          "when": "view == codearena-challenges && viewItem == challenge",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codearena.submit",
+          "when": "codearena.hasActiveMatch"
+        },
+        {
+          "command": "codearena.lockSubmission",
+          "when": "codearena.hasActiveMatch && codearena.hasSubmitted"
+        },
+        {
+          "command": "codearena.openMatchInWeb",
+          "when": "codearena.hasActiveMatch"
         }
       ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run build",
-    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "vscode:prepublish": "pnpm run build:prod",
+    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "build:prod": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "dev": "pnpm run build --watch",
     "lint": "eslint src --ext ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test ./src/test/**/*.test.ts",
+    "test:vscode": "vscode-test",
+    "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@codearena/eslint-config": "workspace:*",
     "@codearena/tsconfig": "workspace:*",
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.6",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.8",
+    "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.19.9",
     "eslint": "^8.55.0",
+    "glob": "^10.3.10",
+    "mocha": "^10.2.0",
     "typescript": "^5.3.0"
   },
   "dependencies": {
