@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 
 import { db, schema } from '../../db';
 import { NotFoundError, ValidationError, ConflictError } from '../../lib/errors';
+import { type UserRole } from '../../plugins';
 
 const { challenges, challengeVersions } = schema;
 
@@ -40,10 +41,14 @@ const versionIdParamSchema = z.object({
   versionId: z.string().uuid(),
 });
 
-// TODO: Add authentication middleware to verify admin role
-// For now, these endpoints are unprotected
+// Admin routes require admin role
+const ADMIN_ROLES: UserRole[] = ['admin'];
 
 export async function adminChallengeRoutes(app: FastifyInstance) {
+  // Apply authentication and admin role check to all routes in this plugin
+  app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', app.requireRole(ADMIN_ROLES));
+
   // POST /api/admin/challenges - Create a new challenge
   app.post('/api/admin/challenges', async (request: FastifyRequest) => {
     const bodyResult = createChallengeSchema.safeParse(request.body);
@@ -66,9 +71,8 @@ export async function adminChallengeRoutes(app: FastifyInstance) {
       throw new ConflictError(`Challenge with slug '${slug}' already exists`);
     }
 
-    // TODO: Get actual user ID from authenticated session
-    // For now, use a placeholder UUID
-    const createdBy = '00000000-0000-0000-0000-000000000000';
+    // Get user ID from authenticated session
+    const createdBy = request.user!.id;
 
     const [newChallenge] = await db
       .insert(challenges)

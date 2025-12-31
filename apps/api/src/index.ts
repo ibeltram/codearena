@@ -16,6 +16,7 @@ import {
   registerJwt,
   registerRequestId,
   registerRateLimit,
+  registerRbac,
 } from './plugins';
 import { registerRoutes } from './routes';
 
@@ -36,6 +37,7 @@ async function buildApp() {
   await registerCors(app);
   await registerRateLimit(app);
   await registerJwt(app);
+  await registerRbac(app);
   await registerErrorHandler(app);
 
   // Register routes

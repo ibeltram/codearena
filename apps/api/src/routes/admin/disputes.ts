@@ -19,10 +19,10 @@ import { db, schema } from '../../db';
 import {
   NotFoundError,
   ValidationError,
-  ForbiddenError,
   ConflictError,
 } from '../../lib/errors';
 import { settleMatch, type SettlementOutcome } from '../../lib/staking';
+import { type UserRole } from '../../plugins';
 
 const {
   disputes,
@@ -61,21 +61,16 @@ const resolveDisputeSchema = z.object({
   internalNotes: z.string().optional(),
 });
 
+// Disputes can be managed by admins and moderators
+const DISPUTE_ROLES: UserRole[] = ['admin', 'moderator'];
+
 export async function adminDisputeRoutes(app: FastifyInstance) {
-  // Helper to get admin user ID from request
-  // TODO: In production, verify user has admin role
-  const getAdminUserId = (request: FastifyRequest): string => {
-    const userId = request.headers['x-user-id'] as string;
-    if (!userId) {
-      throw new ForbiddenError('Admin authentication required');
-    }
-    // TODO: Check if user has admin role
-    return userId;
-  };
+  // Apply authentication and role check to all routes in this plugin
+  app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', app.requireRole(DISPUTE_ROLES));
 
   // GET /api/admin/disputes - List all disputes
   app.get('/api/admin/disputes', async (request: FastifyRequest, reply: FastifyReply) => {
-    const _adminId = getAdminUserId(request);
 
     const queryResult = listDisputesQuerySchema.safeParse(request.query);
     if (!queryResult.success) {
@@ -159,7 +154,6 @@ export async function adminDisputeRoutes(app: FastifyInstance) {
 
   // GET /api/admin/disputes/:id - Get dispute details
   app.get('/api/admin/disputes/:id', async (request: FastifyRequest, reply: FastifyReply) => {
-    const _adminId = getAdminUserId(request);
 
     const paramResult = disputeIdParamSchema.safeParse(request.params);
     if (!paramResult.success) {
@@ -298,7 +292,7 @@ export async function adminDisputeRoutes(app: FastifyInstance) {
 
   // POST /api/admin/disputes/:id/review - Mark dispute as in_review
   app.post('/api/admin/disputes/:id/review', async (request: FastifyRequest, reply: FastifyReply) => {
-    const adminId = getAdminUserId(request);
+    const adminId = request.user!.id;
 
     const paramResult = disputeIdParamSchema.safeParse(request.params);
     if (!paramResult.success) {
@@ -360,7 +354,7 @@ export async function adminDisputeRoutes(app: FastifyInstance) {
 
   // POST /api/admin/disputes/:id/resolve - Resolve a dispute
   app.post('/api/admin/disputes/:id/resolve', async (request: FastifyRequest, reply: FastifyReply) => {
-    const adminId = getAdminUserId(request);
+    const adminId = request.user!.id;
 
     const paramResult = disputeIdParamSchema.safeParse(request.params);
     if (!paramResult.success) {
@@ -499,7 +493,7 @@ export async function adminDisputeRoutes(app: FastifyInstance) {
 
   // POST /api/admin/disputes/:id/rejudge - Trigger re-judging for the match
   app.post('/api/admin/disputes/:id/rejudge', async (request: FastifyRequest, reply: FastifyReply) => {
-    const adminId = getAdminUserId(request);
+    const adminId = request.user!.id;
 
     const paramResult = disputeIdParamSchema.safeParse(request.params);
     if (!paramResult.success) {

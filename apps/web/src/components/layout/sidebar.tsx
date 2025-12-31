@@ -21,7 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { useAuthStore, useUIStore } from '@/store';
+import { useAuthStore, useUIStore, isModerator } from '@/store';
 
 const mainNavItems = [
   { href: '/', label: 'Home', icon: Home },
@@ -62,7 +62,8 @@ export function Sidebar() {
     }
   }, [setSidebarOpen]);
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'moderator';
+  // Use the isModerator helper to check if user has admin or moderator role
+  const canAccessAdmin = isModerator(user);
 
   return (
     <>
@@ -172,7 +173,7 @@ export function Sidebar() {
           )}
 
           {/* Admin navigation */}
-          {isAdmin && (
+          {canAccessAdmin && (
             <>
               <Separator className="my-4" />
               <div className="space-y-1">

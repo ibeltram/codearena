@@ -1,13 +1,44 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+export type UserRole = 'user' | 'admin' | 'moderator';
+
 export interface User {
   id: string;
   email: string;
   displayName: string;
   avatarUrl: string | null;
-  role: 'user' | 'admin' | 'moderator';
+  roles: UserRole[];
   githubUsername?: string;
+}
+
+/**
+ * Helper function to check if a user has a specific role
+ */
+export function hasRole(user: User | null, role: UserRole): boolean {
+  return user?.roles?.includes(role) ?? false;
+}
+
+/**
+ * Helper function to check if a user has any of the specified roles
+ */
+export function hasAnyRole(user: User | null, roles: UserRole[]): boolean {
+  if (!user?.roles) return false;
+  return roles.some(role => user.roles.includes(role));
+}
+
+/**
+ * Helper to check if user is admin
+ */
+export function isAdmin(user: User | null): boolean {
+  return hasRole(user, 'admin');
+}
+
+/**
+ * Helper to check if user is moderator or admin
+ */
+export function isModerator(user: User | null): boolean {
+  return hasAnyRole(user, ['admin', 'moderator']);
 }
 
 export interface OAuthAccount {

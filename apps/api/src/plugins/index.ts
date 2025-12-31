@@ -10,3 +10,11 @@ export {
   type RateLimitType,
   type RateLimitConfig,
 } from './rateLimit';
+export {
+  registerRbac,
+  hasRole,
+  hasAnyRole,
+  isAdmin,
+  isModerator,
+  type UserRole,
+} from './rbac';
