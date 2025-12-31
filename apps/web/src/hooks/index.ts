@@ -60,3 +60,11 @@ export {
   usePublishChallengeVersion,
   adminChallengeKeys,
 } from './use-admin-challenges';
+export {
+  useAdminDisputes,
+  useAdminDispute,
+  useStartReview,
+  useResolveDispute,
+  useRejudgeDispute,
+  adminDisputeKeys,
+} from './use-admin-disputes';
