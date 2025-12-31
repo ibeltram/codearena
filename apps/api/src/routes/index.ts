@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 
 import { healthRoutes } from './health';
+import { authRoutes } from './auth';
 import { challengeRoutes } from './challenges';
 import { matchRoutes } from './matches';
 import { matchEventRoutes } from './match-events';
@@ -15,6 +16,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Health check routes
   await app.register(healthRoutes);
+
+  // Auth routes (device code flow, token refresh, etc.)
+  await app.register(authRoutes);
 
   // Public API routes
   await app.register(challengeRoutes);
@@ -33,8 +37,4 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Admin API routes (TODO: add auth middleware)
   await app.register(adminRoutes);
-
-  // TODO: Add more routes as they are implemented
-  // await app.register(authRoutes, { prefix: '/api/auth' });
-  // etc.
 }

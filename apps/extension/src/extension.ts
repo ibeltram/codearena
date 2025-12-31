@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ChallengesProvider, MatchProvider, HistoryProvider } from './providers';
-import { StatusBarService } from './services';
+import { StatusBarService, AuthService } from './services';
 import { Challenge, MatchHistoryItem, ExtensionConfig } from './types';
 
 // Global providers and services
@@ -8,6 +8,7 @@ let challengesProvider: ChallengesProvider;
 let matchProvider: MatchProvider;
 let historyProvider: HistoryProvider;
 let statusBarService: StatusBarService;
+let authService: AuthService;
 
 // Extension state
 let isAuthenticated = false;
@@ -19,8 +20,8 @@ let currentUserId: string | null = null;
 function getConfig(): ExtensionConfig {
   const config = vscode.workspace.getConfiguration('codearena');
   return {
-    apiUrl: config.get<string>('apiUrl', 'https://api.codearena.dev'),
-    webUrl: config.get<string>('webUrl', 'https://codearena.dev'),
+    apiUrl: config.get<string>('apiUrl', 'http://localhost:3002'),
+    webUrl: config.get<string>('webUrl', 'http://localhost:3001'),
     autoSubmit: config.get<boolean>('autoSubmit', false),
     showTimerInStatusBar: config.get<boolean>('showTimerInStatusBar', true),
     timerWarningMinutes: config.get<number>('timerWarningMinutes', 5),
@@ -40,29 +41,30 @@ function getConfig(): ExtensionConfig {
  * Register commands
  */
 function registerCommands(context: vscode.ExtensionContext): void {
-  // Sign In
+  // Sign In - Now uses AuthService device code flow
   const signIn = vscode.commands.registerCommand('codearena.signIn', async () => {
     if (isAuthenticated) {
       vscode.window.showInformationMessage('CodeArena: You are already signed in.');
       return;
     }
 
-    // Device code auth flow placeholder
-    const config = getConfig();
-    vscode.window.showInformationMessage(
-      `CodeArena: Sign in flow will redirect to ${config.webUrl}/device`
-    );
+    // Start device code authentication flow
+    const success = await authService.startDeviceCodeFlow();
 
-    // TODO: Implement device code OAuth flow
-    // 1. Call POST /api/auth/device/start
-    // 2. Show user code and verification URL
-    // 3. Poll POST /api/auth/device/confirm until tokens received
-    // 4. Store tokens securely
-    // 5. Set isAuthenticated = true
-    // 6. Refresh challenges list
+    if (success) {
+      isAuthenticated = true;
+      const tokens = await authService.getStoredTokens();
+      if (tokens) {
+        currentUserId = tokens.userId;
+        matchProvider.setCurrentUserId(currentUserId);
+      }
+
+      // Refresh challenges
+      vscode.commands.executeCommand('codearena.refreshChallenges');
+    }
   });
 
-  // Sign Out
+  // Sign Out - Now uses AuthService
   const signOut = vscode.commands.registerCommand('codearena.signOut', async () => {
     if (!isAuthenticated) {
       vscode.window.showInformationMessage('CodeArena: You are not signed in.');
@@ -76,21 +78,49 @@ function registerCommands(context: vscode.ExtensionContext): void {
     );
 
     if (confirm === 'Sign Out') {
-      // Clear stored tokens
-      await context.secrets.delete('codearena.tokens');
+      // Sign out via auth service
+      await authService.signOut();
+
       isAuthenticated = false;
       currentUserId = null;
 
       // Clear providers
       challengesProvider.setChallenges([]);
       matchProvider.setMatch(null);
+      matchProvider.setCurrentUserId(null);
       historyProvider.setMatches([]);
       statusBarService.hide();
 
-      // Update context
-      await vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', false);
-
       vscode.window.showInformationMessage('CodeArena: You have been signed out.');
+    }
+  });
+
+  // Show Auth Status - New command for account options
+  const showAuthStatus = vscode.commands.registerCommand('codearena.showAuthStatus', async () => {
+    const tokens = await authService.getStoredTokens();
+    if (!tokens) {
+      vscode.window.showInformationMessage('CodeArena: Not signed in.');
+      return;
+    }
+
+    const action = await vscode.window.showQuickPick(
+      [
+        {
+          label: `$(account) ${tokens.userDisplayName}`,
+          description: tokens.userEmail,
+          detail: 'Currently signed in',
+        },
+        { label: '$(sign-out) Sign Out', description: 'Sign out of CodeArena' },
+        { label: '$(globe) View Profile', description: 'Open your profile in browser' },
+      ],
+      { title: 'CodeArena Account' }
+    );
+
+    if (action?.label.includes('Sign Out')) {
+      vscode.commands.executeCommand('codearena.signOut');
+    } else if (action?.label.includes('View Profile')) {
+      const config = getConfig();
+      vscode.env.openExternal(vscode.Uri.parse(`${config.webUrl}/profile/${tokens.userId}`));
     }
   });
 
@@ -157,13 +187,27 @@ function registerCommands(context: vscode.ExtensionContext): void {
       );
 
       if (confirm === 'Join Match') {
-        // TODO: Call API to join match
+        // TODO: Call API to join match with auth token
+        const token = await authService.getAccessToken();
+        if (!token) {
+          vscode.window.showErrorMessage('CodeArena: Please sign in again.');
+          return;
+        }
+
         vscode.window.showInformationMessage(
           `CodeArena: Joining match for ${challenge.title}...`
         );
 
-        // For now, show a placeholder active match
-        // In real implementation, this would be populated from the API response
+        // TODO: Make API call with token
+        // const config = getConfig();
+        // fetch(`${config.apiUrl}/api/matches/queue`, {
+        //   method: 'POST',
+        //   headers: {
+        //     'Authorization': `Bearer ${token}`,
+        //     'Content-Type': 'application/json',
+        //   },
+        //   body: JSON.stringify({ challengeId: challenge.id }),
+        // });
       }
     }
   );
@@ -197,14 +241,6 @@ function registerCommands(context: vscode.ExtensionContext): void {
     }
 
     // TODO: Implement file preview and upload
-    // 1. Scan workspace for files (excluding patterns from config)
-    // 2. Show file preview with sizes
-    // 3. Calculate total size and check against max
-    // 4. Create zip archive
-    // 5. Upload via multipart upload API
-    // 6. Show progress
-    // 7. Update match provider with submission
-
     vscode.window.showInformationMessage(
       `CodeArena: Submitting from ${targetFolder.name}... (not yet implemented)`
     );
@@ -262,19 +298,37 @@ function registerCommands(context: vscode.ExtensionContext): void {
   });
 
   // Refresh Challenges
-  const refreshChallenges = vscode.commands.registerCommand('codearena.refreshChallenges', () => {
-    // TODO: Fetch challenges from API
+  const refreshChallenges = vscode.commands.registerCommand('codearena.refreshChallenges', async () => {
     challengesProvider.setLoading(true);
-    setTimeout(() => {
-      challengesProvider.setLoading(false);
-      // Mock data for now
+
+    try {
+      const config = getConfig();
+      const token = await authService.getAccessToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${config.apiUrl}/api/challenges`, { headers });
+
+      if (response.ok) {
+        const data = await response.json();
+        challengesProvider.setChallenges(data.challenges || []);
+      } else {
+        challengesProvider.setChallenges([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch challenges:', error);
       challengesProvider.setChallenges([]);
-    }, 1000);
+    } finally {
+      challengesProvider.setLoading(false);
+    }
   });
 
   context.subscriptions.push(
     signIn,
     signOut,
+    showAuthStatus,
     browseChallenges,
     showChallengeDetails,
     joinMatch,
@@ -302,11 +356,12 @@ async function setupContext(): Promise<void> {
 export function activate(context: vscode.ExtensionContext) {
   console.info('CodeArena extension is activating...');
 
-  // Initialize providers
+  // Initialize providers and services
   challengesProvider = new ChallengesProvider();
   matchProvider = new MatchProvider();
   historyProvider = new HistoryProvider();
   statusBarService = new StatusBarService();
+  authService = new AuthService(context);
 
   // Register tree data providers
   const challengesView = vscode.window.createTreeView('codearena-challenges', {
@@ -330,26 +385,26 @@ export function activate(context: vscode.ExtensionContext) {
   // Set up context values
   setupContext();
 
-  // Add status bar service to subscriptions
+  // Add services to subscriptions for disposal
   context.subscriptions.push({
-    dispose: () => statusBarService.dispose(),
+    dispose: () => {
+      statusBarService.dispose();
+      authService.dispose();
+    },
   });
 
-  // Check for existing tokens (auto sign-in)
-  context.secrets.get('codearena.tokens').then((tokens) => {
-    if (tokens) {
-      try {
-        const parsed = JSON.parse(tokens);
-        if (parsed.accessToken && parsed.expiresAt > Date.now()) {
-          isAuthenticated = true;
-          currentUserId = parsed.userId;
+  // Initialize auth service and check for existing session
+  authService.initialize().then((authenticated) => {
+    if (authenticated) {
+      isAuthenticated = true;
+      authService.getStoredTokens().then((tokens) => {
+        if (tokens) {
+          currentUserId = tokens.userId;
           matchProvider.setCurrentUserId(currentUserId);
-          vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', true);
-          // TODO: Fetch user data and refresh challenges
+          // Refresh challenges on successful auto-login
+          vscode.commands.executeCommand('codearena.refreshChallenges');
         }
-      } catch {
-        // Invalid tokens, ignore
-      }
+      });
     }
   });
 
@@ -377,4 +432,5 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
   console.info('CodeArena extension is deactivating...');
   statusBarService?.dispose();
+  authService?.dispose();
 }

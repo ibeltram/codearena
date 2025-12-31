@@ -16,15 +16,26 @@
     "commands": [
       {
         "command": "codearena.signIn",
-        "title": "CodeArena: Sign In"
+        "title": "CodeArena: Sign In",
+        "icon": "$(sign-in)"
       },
       {
         "command": "codearena.signOut",
-        "title": "CodeArena: Sign Out"
+        "title": "CodeArena: Sign Out",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "codearena.showAuthStatus",
+        "title": "CodeArena: Account"
       },
       {
         "command": "codearena.browseChallenges",
         "title": "CodeArena: Browse Challenges"
+      },
+      {
+        "command": "codearena.refreshChallenges",
+        "title": "CodeArena: Refresh Challenges",
+        "icon": "$(refresh)"
       },
       {
         "command": "codearena.joinMatch",
@@ -135,8 +146,13 @@
     "menus": {
       "view/title": [
         {
-          "command": "codearena.browseChallenges",
+          "command": "codearena.refreshChallenges",
           "when": "view == codearena-challenges",
+          "group": "navigation"
+        },
+        {
+          "command": "codearena.signIn",
+          "when": "view == codearena-challenges && !codearena.isAuthenticated",
           "group": "navigation"
         }
       ],
