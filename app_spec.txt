@@ -230,7 +230,7 @@
   <automation_services>
     <purpose>
       Credits must have tangible value even for users who already pay Claude/ChatGPT subscriptions.
-      Redemption targets must be “beyond subscription” workflows: batch, CI, evals, multi-model comparisons, agent jobs.
+      Redemption targets must be "beyond subscription" workflows: batch, CI, evals, multi-model comparisons, agent jobs.
     </purpose>
 
     <services>
@@ -265,6 +265,261 @@
       - Abuse controls: per-user quotas, rate limits, and suspicious activity detection.
     </redemption_rules>
   </automation_services>
+
+  <rewards_marketplace>
+    <purpose>
+      Credits translate to real monetary value through partner SaaS offsets and sponsored compute.
+      Unlike AI chat subscriptions, these are tangible savings users already pay for monthly.
+      Partner companies actively provide credits for developer acquisition and community building.
+    </purpose>
+
+    <saas_offsets>
+      <description>
+        Partner credits that offset real monthly SaaS bills. These are services developers already pay for,
+        making credits feel like real money saved. Partners benefit from user acquisition and engagement.
+      </description>
+
+      <partners>
+        <partner name="Vercel">
+          - Hosting and edge compute credits
+          - Tiers: $10 / $25 / $50 / $100 credit codes
+          - Redeemable on any Vercel plan or usage overage
+        </partner>
+
+        <partner name="Supabase">
+          - Database and auth platform credits
+          - Tiers: Pro free for 1 month / 3 months / 6 months
+          - Additional compute and storage add-ons
+        </partner>
+
+        <partner name="Railway">
+          - App hosting and database credits
+          - Tiers: $5 / $10 / $25 / $50 usage credits
+          - Stackable with existing accounts
+        </partner>
+
+        <partner name="Render">
+          - Cloud hosting credits
+          - Tiers: $10 / $25 / $50 / $100 credit codes
+          - Valid for any Render service
+        </partner>
+
+        <partner name="Fly.io">
+          - Edge compute and container hosting
+          - Tiers: $10 / $25 / $50 usage credits
+          - GPU compute credits for ML workloads
+        </partner>
+
+        <partner name="Sentry">
+          - Error monitoring and performance
+          - Tiers: Team plan free for 1 month / 3 months
+          - Additional event quota add-ons
+        </partner>
+
+        <partner name="Linear">
+          - Project management for dev teams
+          - Tiers: Plus plan free for 1 month / 3 months
+          - Team seat credits
+        </partner>
+
+        <partner name="Notion">
+          - Workspace and documentation
+          - Tiers: Plus plan free for 1 month / 3 months
+          - AI add-on credits
+        </partner>
+      </partners>
+
+      <redemption_flow>
+        1. User navigates to Rewards Marketplace from wallet
+        2. Browse available SaaS partners and tiers
+        3. Select reward and confirm credit spend
+        4. System generates unique redemption code or applies via partner API
+        5. User receives code via email + in-app notification
+        6. Code expires after 30 days if unused
+        7. Partner webhook confirms activation (where supported)
+      </redemption_flow>
+    </saas_offsets>
+
+    <sponsored_compute>
+      <description>
+        High-value compute and infrastructure rewards for top performers. Backed by cloud providers,
+        GPU hosts, and infra startups. Presented as "$X in sponsored AI & cloud compute" not platform credits.
+        Common in hackathons and dev competitions.
+      </description>
+
+      <tiers>
+        <tier name="Starter Compute Pack" credits_required="500">
+          - $50 combined value across partners
+          - Mix of cloud credits from 2-3 providers
+          - Ideal for side projects and learning
+        </tier>
+
+        <tier name="Builder Compute Pack" credits_required="2000">
+          - $200 combined value across partners
+          - Includes GPU compute access
+          - Full cloud provider credit bundle
+        </tier>
+
+        <tier name="Pro Compute Pack" credits_required="5000">
+          - $500 combined value across partners
+          - Priority GPU allocation
+          - Extended validity (90 days vs 30)
+          - Premium support from partners
+        </tier>
+      </tiers>
+
+      <providers>
+        <provider name="Cloud Providers">
+          - AWS Activate credits
+          - GCP startup credits
+          - Azure for Startups credits
+          - DigitalOcean credits
+        </provider>
+
+        <provider name="GPU Hosts">
+          - Lambda Labs compute credits
+          - RunPod credits
+          - Vast.ai credits
+          - Modal credits
+        </provider>
+
+        <provider name="AI/ML Platforms">
+          - Replicate credits
+          - Hugging Face Pro/Enterprise
+          - Weights & Biases credits
+          - Together.ai credits
+        </provider>
+
+        <provider name="Infra Startups">
+          - Upstash credits (Redis/Kafka)
+          - PlanetScale credits (MySQL)
+          - Neon credits (Postgres)
+          - Turso credits (SQLite edge)
+        </provider>
+      </providers>
+
+      <fulfillment>
+        - Partner credit codes generated on-demand or from pre-allocated pool
+        - Some partners support direct API provisioning
+        - High-value rewards may require identity verification
+        - Partner logos and terms displayed at redemption
+        - Usage tracking where partner APIs support it
+      </fulfillment>
+    </sponsored_compute>
+
+    <leaderboard_rewards>
+      <description>
+        Automatic rewards for leaderboard positions. Top performers receive partner credits
+        without spending platform credits. Creates ongoing incentive for competition.
+      </description>
+
+      <weekly_rewards>
+        - Top 3: $25 partner credit bundle each
+        - Top 10: $10 partner credit each
+        - Category winners: Partner-specific rewards
+      </weekly_rewards>
+
+      <season_rewards>
+        - Season champion: $500 compute pack + featured profile
+        - Top 10: $100 compute pack each
+        - Category champions: Partner spotlight features
+      </season_rewards>
+    </leaderboard_rewards>
+
+    <database_additions>
+      <partner_rewards>
+        - id, partner_slug, name, logo_url, description
+        - reward_type (saas_offset/compute_credit)
+        - tiers_json (available redemption tiers)
+        - credits_required_min, credits_required_max
+        - is_active, created_at, updated_at
+      </partner_rewards>
+
+      <reward_inventory>
+        - id, partner_reward_id, tier_slug
+        - code (encrypted), code_type (single_use/multi_use/api_generated)
+        - status (available/reserved/redeemed/expired)
+        - expires_at, created_at
+      </reward_inventory>
+
+      <reward_redemptions>
+        - id, user_id, partner_reward_id, tier_slug
+        - credits_spent, code_issued (encrypted)
+        - status (pending/issued/activated/expired/refunded)
+        - issued_at, activated_at, expires_at
+        - partner_confirmation_json
+      </reward_redemptions>
+
+      <leaderboard_payouts>
+        - id, user_id, leaderboard_type (weekly/season/category)
+        - period_start, period_end, rank
+        - reward_value, reward_description
+        - status (pending/issued/claimed)
+        - created_at
+      </leaderboard_payouts>
+    </database_additions>
+
+    <api_endpoints>
+      <marketplace>
+        - GET  /api/rewards/partners (list active partners and tiers)
+        - GET  /api/rewards/partners/:slug (partner detail and availability)
+        - POST /api/rewards/redeem (spend credits for reward)
+        - GET  /api/rewards/redemptions (user's redemption history)
+        - GET  /api/rewards/redemptions/:id (redemption detail + code)
+      </marketplace>
+
+      <leaderboard_rewards>
+        - GET  /api/rewards/leaderboard (current period rewards)
+        - GET  /api/rewards/leaderboard/history (past payouts)
+        - POST /api/rewards/leaderboard/:id/claim (claim unclaimed reward)
+      </leaderboard_rewards>
+
+      <admin>
+        - GET  /api/admin/rewards/inventory (code inventory status)
+        - POST /api/admin/rewards/inventory/upload (bulk upload codes)
+        - POST /api/admin/rewards/partners (add/update partner)
+        - GET  /api/admin/rewards/redemptions (all redemptions with filters)
+        - POST /api/admin/rewards/refund/:id (refund failed redemption)
+      </admin>
+    </api_endpoints>
+
+    <ui_pages>
+      <rewards_marketplace_page>
+        - Hero: "Turn your wins into real value"
+        - Partner grid with logos, descriptions, available tiers
+        - Filter by category (SaaS/Compute/GPU)
+        - Each partner card shows: logo, name, tier options, credits required
+        - Click to expand: full description, terms, redemption flow
+        - User's credit balance always visible
+        - Recently redeemed section (social proof)
+      </rewards_marketplace_page>
+
+      <redemption_flow_modal>
+        - Partner logo and tier selected
+        - Credits required vs user balance
+        - Terms and expiration info
+        - Confirm button (disabled if insufficient credits)
+        - Success: show code + copy button + email confirmation
+        - Instructions for partner activation
+      </redemption_flow_modal>
+
+      <my_rewards_page>
+        - Active rewards (codes to use)
+        - Pending leaderboard rewards to claim
+        - Redemption history with status
+        - Filter by partner, status, date
+        - Re-send code to email option
+      </my_rewards_page>
+
+      <admin_rewards_console>
+        - Partner management (add/edit/deactivate)
+        - Code inventory upload and monitoring
+        - Low inventory alerts
+        - Redemption analytics and partner reports
+        - Refund processing
+      </admin_rewards_console>
+    </ui_pages>
+  </rewards_marketplace>
 
   <state_machines>
     <match_state_machine>

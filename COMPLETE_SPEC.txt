@@ -1,0 +1,1443 @@
+<project_specification version="2.0">
+  <project_name>CodeArena</project_name>
+  <status>Complete Implementation Specification (Phases 1-9, 11)</status>
+
+  <overview>
+    This specification describes the complete, production-ready implementation of RepoRivals,
+    a competitive coding platform where builders accept timed challenges, work in their own
+    workflows/IDEs, submit final outputs (repo/zip), and are judged via deterministic
+    automation + rubric + optional AI judge.
+
+    This spec covers 100% completion of Phases 1-9 and 11, excluding Phase 10 (Automation Services).
+  </overview>
+
+  <completed_phases>
+    <phase name="Phase 1: Foundation & Architecture" completion="100%"/>
+    <phase name="Phase 2: Identity & Extension Auth" completion="100%"/>
+    <phase name="Phase 3: Challenges & Versioning" completion="100%"/>
+    <phase name="Phase 4: Match Engine & Matchmaking" completion="100%"/>
+    <phase name="Phase 5: Submissions & Artifacts" completion="100%"/>
+    <phase name="Phase 6: Judging & Scoring" completion="100%"/>
+    <phase name="Phase 7: Credits Wallet & Ledger" completion="100%"/>
+    <phase name="Phase 8: Rankings, Seasons, Disputes, Moderation" completion="100%"/>
+    <phase name="Phase 9: Tournaments & Prize Pools" completion="100%"/>
+    <phase name="Phase 10: Automation Redemption Products" completion="0%" status="deferred"/>
+    <phase name="Phase 11: Production Hardening & Scale" completion="100%"/>
+  </completed_phases>
+
+  <phase_1_foundation>
+    <title>Foundation & Architecture</title>
+    <status>COMPLETE</status>
+
+    <infrastructure>
+      <monorepo>
+        - pnpm workspace with apps/api, apps/web, apps/extension, packages/shared
+        - Shared TypeScript configs and ESLint configs
+        - Turborepo for build orchestration
+      </monorepo>
+
+      <ci_cd>
+        - GitHub Actions workflows for lint/test/build on every PR
+        - Automatic staging deployment on main merge
+        - Manual production promotion with canary rollout
+        - Container image signing for judge runners
+        - Extension VSIX packaging pipeline
+      </ci_cd>
+
+      <environments>
+        - Local dev: Docker Compose (PostgreSQL, Redis, MinIO)
+        - Staging: Feature-flagged, mirrors production
+        - Production: Kubernetes with auto-scaling
+      </environments>
+
+      <feature_flags>
+        - LaunchDarkly or similar integration
+        - Per-environment toggles for new features
+        - Percentage rollouts for risky changes
+      </feature_flags>
+    </infrastructure>
+
+    <observability>
+      <logging>
+        - Pino structured JSON logging
+        - Correlation IDs on all requests (match_id, user_id, run_id)
+        - Log aggregation to Datadog/Grafana Loki
+      </logging>
+
+      <metrics>
+        - Prometheus metrics endpoint
+        - Key SLIs: match_start_success, upload_success, judging_latency, payment_success
+        - Grafana dashboards for all services
+      </metrics>
+
+      <tracing>
+        - OpenTelemetry instrumentation
+        - Distributed traces across API -> Queue -> Sandbox -> Storage
+        - Trace sampling at 10% for production
+      </tracing>
+
+      <alerting>
+        - PagerDuty/Opsgenie integration
+        - Alert rules for SLO breaches
+        - Runbooks linked to every alert
+      </alerting>
+    </observability>
+
+    <audit_logging>
+      <events_audit_table>
+        - Captures all sensitive operations
+        - Actor, entity, action, timestamp, payload
+        - 90-day retention with cold storage archive
+      </events_audit_table>
+
+      <admin_audit_explorer>
+        - Web UI at /admin/audit
+        - Filter by actor, entity type, action, date range
+        - Export to CSV/JSON
+        - Search within payload JSON
+      </admin_audit_explorer>
+    </audit_logging>
+  </phase_1_foundation>
+
+  <phase_2_identity_auth>
+    <title>Identity & Extension Auth</title>
+    <status>COMPLETE</status>
+
+    <web_authentication>
+      <github_oauth>
+        - OAuth 2.0 flow with PKCE
+        - Minimal scopes: user:email, read:user
+        - Account linking for existing users
+      </github_oauth>
+
+      <google_oauth>
+        - OAuth 2.0 flow with PKCE
+        - Scopes: email, profile
+        - Account linking support
+      </google_oauth>
+
+      <session_management>
+        - Short-lived access tokens (15 minutes)
+        - Refresh tokens (7 days) with rotation
+        - Secure HttpOnly cookies for web
+        - Token revocation on logout
+      </session_management>
+    </web_authentication>
+
+    <extension_authentication>
+      <device_code_flow>
+        - POST /api/auth/device/start returns device_code + user_code + verification_uri
+        - User visits verification_uri and enters user_code
+        - Extension polls POST /api/auth/device/confirm until authorized
+        - Returns access_token + refresh_token on success
+      </device_code_flow>
+
+      <token_storage>
+        - VS Code SecretStorage API for secure token persistence
+        - Automatic token refresh on 401 responses
+        - Clear tokens on sign out
+      </token_storage>
+    </extension_authentication>
+
+    <auth_context_integration>
+      <web_app>
+        - AuthProvider wraps entire app
+        - useAuth() hook available everywhere
+        - Current user ID passed to all mutations
+        - Protected routes redirect to /login
+      </web_app>
+
+      <api>
+        - Auth middleware on all protected routes
+        - User ID extracted from JWT, NOT from headers
+        - Rate limiting per user: 100 req/min default, 1000 req/min for premium
+      </api>
+    </auth_context_integration>
+
+    <role_management>
+      <roles>
+        - user: Default role, can compete and view
+        - moderator: Can review disputes, issue warnings
+        - admin: Full access including challenge creation, prize management
+      </roles>
+
+      <role_gating>
+        - API routes check role in middleware
+        - Web pages show/hide admin nav based on role
+        - Extension commands gated by role where needed
+      </role_gating>
+    </role_management>
+  </phase_2_identity_auth>
+
+  <phase_3_challenges>
+    <title>Challenges & Versioning</title>
+    <status>COMPLETE</status>
+
+    <challenge_schema>
+      <challenge>
+        - id, slug (unique), title, description (markdown)
+        - category (frontend, backend, fullstack, algorithm, data, devops)
+        - difficulty (beginner, intermediate, advanced, expert)
+        - is_published, created_by, created_at, updated_at
+      </challenge>
+
+      <challenge_version>
+        - id, challenge_id, version_number (auto-increment per challenge)
+        - requirements_json: Array of requirement objects with id, title, description, weight
+        - rubric_json: Scoring criteria with evidence expectations
+        - constraints_json: Time limit, resource limits, allowed languages
+        - template_ref: S3 key or git ref for starter code
+        - judge_image_ref: Container digest for reproducible judging
+        - created_at, published_at (null if draft)
+      </challenge_version>
+    </challenge_schema>
+
+    <challenge_discovery>
+      <web_ui>
+        - /challenges page with card grid
+        - Filters: category, difficulty, duration, has_template
+        - Sort: newest, popular, difficulty
+        - Search by title/description
+        - Pagination with 12 per page
+      </web_ui>
+
+      <extension_ui>
+        - Tree view grouped by category
+        - Filter command for category selection
+        - Refresh command to fetch latest
+        - Click to view details in quick pick
+      </extension_ui>
+
+      <api_endpoints>
+        - GET /api/challenges (public, filterable, paginated)
+        - GET /api/challenges/:id (public, single challenge)
+        - GET /api/challenges/:id/versions (public, list versions)
+        - GET /api/challenge-versions/:versionId (public, version details)
+      </api_endpoints>
+    </challenge_discovery>
+
+    <admin_challenge_management>
+      <challenge_builder>
+        - /admin/challenges page with table of all challenges
+        - /admin/challenges/new for creating challenges
+        - /admin/challenges/:id for editing
+        - Rich markdown editor for description
+        - Preview mode to see rendered challenge
+      </challenge_builder>
+
+      <requirements_builder>
+        - Drag-and-drop reordering
+        - Weight distribution visualization
+        - Evidence type selection per requirement
+        - Validation that weights sum to 100
+      </requirements_builder>
+
+      <rubric_editor>
+        - Per-requirement scoring criteria
+        - Point allocation editor
+        - Test file association
+        - AI judge prompt customization (optional)
+      </rubric_editor>
+
+      <version_management>
+        - Create new version from existing
+        - Side-by-side version comparison
+        - Publish/unpublish versions
+        - Set default version for new matches
+      </version_management>
+
+      <template_management>
+        - Upload zip template via drag-and-drop
+        - Git repository URL input
+        - Template preview with file tree
+        - Version template files independently
+      </template_management>
+
+      <api_endpoints>
+        - POST /api/admin/challenges (create)
+        - PUT /api/admin/challenges/:id (update)
+        - DELETE /api/admin/challenges/:id (soft delete)
+        - POST /api/admin/challenges/:id/publish (publish)
+        - POST /api/admin/challenges/:id/unpublish (unpublish)
+        - POST /api/admin/challenges/:id/versions (create version)
+        - PUT /api/admin/challenge-versions/:id (update version)
+        - POST /api/admin/challenge-versions/:id/publish (publish version)
+      </api_endpoints>
+    </admin_challenge_management>
+  </phase_3_challenges>
+
+  <phase_4_match_engine>
+    <title>Match Engine & Matchmaking</title>
+    <status>COMPLETE</status>
+
+    <match_state_machine>
+      <states>
+        - created: Match created, waiting for opponent
+        - open: Match published, accepting joins
+        - matched: Both participants found, stake holds placed
+        - in_progress: Timer started, coding active
+        - submission_locked: Deadline reached, no more submissions
+        - judging: Pipeline running
+        - finalized: Scores computed, credits settled
+        - cancelled: Match cancelled before start
+        - archived: Post-dispute window, historical record
+      </states>
+
+      <transitions>
+        - created -> open: Creator publishes match
+        - open -> matched: Opponent joins AND stake holds succeed
+        - open -> cancelled: Creator cancels OR timeout
+        - matched -> in_progress: Both ready AND server start time reached
+        - matched -> cancelled: Ready timeout OR stake release failure
+        - in_progress -> submission_locked: Deadline OR both lock early
+        - submission_locked -> judging: Automatic queue
+        - judging -> finalized: Scores computed AND settlement complete
+        - finalized -> archived: Dispute window expires (48h)
+      </transitions>
+
+      <server_authoritative_timer>
+        - Match start_at set by server on transition to in_progress
+        - Match end_at computed from challenge duration
+        - Timer ticks broadcast via SSE every second
+        - All deadline checks use server time, not client
+        - BullMQ delayed job for deadline enforcement
+      </server_authoritative_timer>
+    </match_state_machine>
+
+    <matchmaking_modes>
+      <ranked_queue>
+        - POST /api/matches/queue to join
+        - Redis sorted set by rating
+        - Match within rating range (expanding over time)
+        - Stake amount determined by lower-rated player's cap
+        - Auto-create match when pair found
+      </ranked_queue>
+
+      <invite_match>
+        - POST /api/matches to create with invite_code
+        - Share link: {webUrl}/matches/join/{invite_code}
+        - POST /api/matches/:id/join with invite_code
+        - Optional stake amount (0 for practice)
+      </invite_match>
+
+      <tournament_match>
+        - Created by tournament bracket progression
+        - Participants pre-assigned from bracket
+        - Stake from tournament entry pool
+        - Results feed back to bracket
+      </tournament_match>
+    </matchmaking_modes>
+
+    <match_ui>
+      <challenge_card_actions>
+        - "Quick Match" button joins ranked queue for challenge
+        - "Create Private" button opens invite match dialog
+        - "View Details" links to challenge page
+      </challenge_card_actions>
+
+      <match_detail_page>
+        - Header: Challenge title, match status badge, timer
+        - Participant cards: Avatar, username, rating, ready status, submission status
+        - Action buttons: Ready Up, Submit, Lock, Forfeit (context-aware)
+        - Rules section: Requirements, constraints, rubric weights
+        - Results section: Scores, breakdown, winner (after finalized)
+        - Dispute button (after finalized, within 48h)
+      </match_detail_page>
+
+      <real_time_updates>
+        - SSE connection to /api/matches/:id/events
+        - Events: match_update, timer_tick, participant_update, submission_update, judging_update
+        - Automatic reconnection with exponential backoff
+        - Connection status indicator in UI
+      </real_time_updates>
+    </match_ui>
+
+    <extension_match_flow>
+      <join_flow>
+        - reporivals.joinMatch command
+        - Quick pick to select challenge
+        - Confirmation with stake amount
+        - Status bar shows "Waiting for opponent..."
+      </join_flow>
+
+      <active_match_panel>
+        - WebView with timer, participant cards
+        - Real-time updates via SSE
+        - Submit, Lock, Forfeit buttons
+        - Open in Web button
+      </active_match_panel>
+
+      <status_bar>
+        - Shows time remaining during match
+        - Warning color at configurable threshold (default 5 min)
+        - Click to focus match panel
+      </status_bar>
+    </extension_match_flow>
+
+    <api_endpoints>
+      - POST /api/matches (create invite match)
+      - POST /api/matches/queue (join ranked queue)
+      - GET /api/matches (list user's matches, filterable)
+      - GET /api/matches/:id (match details)
+      - POST /api/matches/:id/join (join with invite code)
+      - POST /api/matches/:id/ready (set ready)
+      - POST /api/matches/:id/forfeit (forfeit match)
+      - POST /api/matches/:id/cancel (cancel before start)
+      - GET /api/matches/:id/events (SSE stream)
+    </api_endpoints>
+  </phase_4_match_engine>
+
+  <phase_5_submissions>
+    <title>Submissions & Artifacts</title>
+    <status>COMPLETE</status>
+
+    <submission_methods>
+      <zip_upload>
+        - Multipart resumable upload
+        - POST /api/matches/:id/submissions/init returns uploadId + presigned part URLs
+        - PUT to presigned URLs for each part (5MB chunks)
+        - POST /api/uploads/:uploadId/complete to finalize
+        - POST /api/matches/:id/submissions/commit to create submission record
+      </zip_upload>
+
+      <github_repo>
+        - POST /api/matches/:id/submissions/from-github
+        - Body: { repoUrl, commitSha (optional, defaults to HEAD) }
+        - Server fetches repo metadata via GitHub API
+        - Downloads tarball and processes as artifact
+        - Validates commit timestamp within match window
+      </github_repo>
+    </submission_methods>
+
+    <artifact_processing>
+      <ingestion>
+        - Extract zip/tarball to temp directory
+        - Generate file manifest with paths, sizes, hashes
+        - Compute content-addressed SHA-256 hash of entire artifact
+        - Store in S3 with hash as key prefix
+      </ingestion>
+
+      <secret_scanning>
+        - Scan all text files for credential patterns
+        - Patterns: AWS keys, GitHub tokens, Stripe keys, DB URLs, private keys, passwords in .env
+        - Mark artifact as flagged if secrets found
+        - Block public viewing of flagged artifacts
+        - Allow owner to acknowledge and keep private
+      </secret_scanning>
+
+      <manifest_generation>
+        - JSON manifest with file tree structure
+        - Per-file: path, size, sha256, mime_type, is_binary
+        - Total file count, total size
+        - Root directory detection
+      </manifest_generation>
+    </artifact_processing>
+
+    <artifact_viewer>
+      <web_ui>
+        - /artifacts/:id page
+        - File tree sidebar with folder expansion
+        - Code viewer with syntax highlighting (Monaco)
+        - Markdown rendering for .md files
+        - Image preview for common formats
+        - Download artifact as zip button
+        - Breadcrumb navigation
+      </web_ui>
+
+      <api_endpoints>
+        - GET /api/artifacts/:id (artifact metadata + manifest)
+        - GET /api/artifacts/:id/files/:path (file content)
+        - GET /api/artifacts/:id/download (presigned download URL)
+      </api_endpoints>
+    </artifact_viewer>
+
+    <comparison_view>
+      <web_ui>
+        - /matches/:id/compare page
+        - Side-by-side participant artifacts
+        - Unified or split diff view toggle
+        - File-by-file comparison
+        - Highlight added/removed/changed lines
+        - Jump to specific files
+      </web_ui>
+
+      <api_endpoints>
+        - GET /api/matches/:id/compare (comparison metadata)
+        - GET /api/matches/:id/compare/files/:path (file diff)
+      </api_endpoints>
+    </comparison_view>
+
+    <extension_submission>
+      <workspace_selection>
+        - Command prompts for workspace folder
+        - Defaults to first workspace folder
+        - Validates folder contains code
+      </workspace_selection>
+
+      <file_preview_panel>
+        - Shows all files to be included
+        - Respects .reporivalsignore file
+        - Default exclusions: node_modules, .git, dist, build, .env
+        - Toggle include/exclude per file
+        - Shows total size
+        - Warns if over size limit (configurable, default 50MB)
+      </file_preview_panel>
+
+      <upload_progress>
+        - Progress bar in panel
+        - Per-part progress updates
+        - Retry on transient failures
+        - Cancel button
+      </upload_progress>
+
+      <lock_confirmation>
+        - Separate command for locking
+        - Confirmation dialog with warnings
+        - Cannot be undone
+        - Shows content hash for verification
+      </lock_confirmation>
+    </extension_submission>
+  </phase_5_submissions>
+
+  <phase_6_judging>
+    <title>Judging & Scoring</title>
+    <status>COMPLETE</status>
+
+    <judging_pipeline>
+      <queue>
+        - BullMQ queue for judging jobs
+        - Job created when match transitions to judging
+        - Contains: match_id, participant submissions, challenge_version_id
+        - Retry with exponential backoff on failure
+      </queue>
+
+      <sandbox_execution>
+        <docker_sandbox>
+          - Pull pinned judge image from challenge version
+          - Create isolated container with resource limits
+          - CPU: 2 cores, Memory: 4GB, Time: 10 minutes max
+          - No network access by default
+          - Mount artifact as read-only
+          - Mount output directory as read-write
+        </docker_sandbox>
+
+        <execution_steps>
+          - Copy artifact to sandbox workspace
+          - Run install command (npm install, pip install, etc.)
+          - Run build command (npm run build, etc.)
+          - Run test command (npm test, pytest, etc.)
+          - Run lint command (eslint, flake8, etc.)
+          - Capture stdout, stderr, exit codes for each
+          - Collect generated reports (coverage, test results)
+        </execution_steps>
+
+        <cleanup>
+          - Destroy container after execution
+          - Store logs in S3
+          - Record resource usage metrics
+        </cleanup>
+      </sandbox_execution>
+
+      <scoring_engine>
+        <automated_checks>
+          - Parse test results (JUnit XML, TAP, etc.)
+          - Count passed/failed/skipped tests
+          - Parse coverage reports
+          - Parse lint results (errors, warnings)
+          - Check build success/failure
+        </automated_checks>
+
+        <rubric_scoring>
+          - For each requirement:
+            - Match evidence to requirement (test files, patterns)
+            - Calculate requirement score (0-100)
+            - Apply weight to get weighted score
+          - Sum weighted scores for total
+        </rubric_scoring>
+
+        <ai_judge_optional>
+          - If challenge version has AI judge enabled
+          - Send code + rubric + evidence to LLM
+          - Constrained prompt with rubric criteria only
+          - Parse structured response for scores
+          - Store reasoning as evidence
+        </ai_judge_optional>
+
+        <tie_breakers>
+          - Applied when total scores equal
+          - Order: most tests passed, fewest critical errors, earliest submit time
+          - Deterministic and transparent
+        </tie_breakers>
+      </scoring_engine>
+    </judging_pipeline>
+
+    <judging_results_ui>
+      <match_results_section>
+        - Winner announcement banner
+        - Side-by-side score comparison
+        - Per-requirement breakdown table
+        - Evidence links for each requirement
+        - Tie-breaker explanation if applicable
+      </match_results_section>
+
+      <detailed_breakdown>
+        - Expandable per-requirement sections
+        - Automated check results (tests, lint, build)
+        - AI judge reasoning (if applicable)
+        - Links to relevant code/files
+      </detailed_breakdown>
+
+      <judging_logs>
+        - Collapsible log viewer
+        - Tabs: Install, Build, Test, Lint
+        - Syntax highlighted output
+        - Error highlighting
+        - Download full logs
+      </judging_logs>
+    </judging_results_ui>
+
+    <runner_image_management>
+      <admin_ui>
+        - /admin/runners page
+        - List available judge images
+        - Upload new images (Dockerfile or pre-built)
+        - Tag and version images
+        - Set default image per challenge category
+        - Deprecate old images
+      </admin_ui>
+
+      <image_security>
+        - Signed images only
+        - Vulnerability scanning
+        - Immutable once published
+        - Content-addressed by digest
+      </image_security>
+    </runner_image_management>
+
+    <api_endpoints>
+      - GET /api/matches/:id/results (judging results)
+      - GET /api/judgement-runs/:id (run details)
+      - GET /api/judgement-runs/:id/logs (log download URL)
+      - POST /api/admin/judging/retry/:matchId (re-run judging)
+      - GET /api/admin/runners (list images)
+      - POST /api/admin/runners (upload image)
+    </api_endpoints>
+  </phase_6_judging>
+
+  <phase_7_credits_wallet>
+    <title>Credits Wallet & Ledger</title>
+    <status>COMPLETE</status>
+
+    <credit_system>
+      <credit_accounts>
+        - One account per user, created on registration
+        - balance_available: Spendable credits
+        - balance_reserved: Held for active stakes
+        - Total balance = available + reserved
+      </credit_accounts>
+
+      <ledger_invariants>
+        - Double-entry bookkeeping
+        - Every transaction has idempotency_key
+        - Available balance can never go negative
+        - Holds reserve from available
+        - Settlement transfers between accounts atomically
+      </ledger_invariants>
+
+      <entry_types>
+        - purchase: Credits bought via Stripe
+        - earn: Credits won from matches/tournaments
+        - stake_hold: Credits reserved for match stake
+        - stake_release: Reserved credits returned to available
+        - transfer: Credits moved between accounts (settlement)
+        - fee: Platform fee deducted from winnings
+        - refund: Stripe refund reversal
+      </entry_types>
+    </credit_system>
+
+    <staking_flow>
+      <create_hold>
+        - On match transition to matched
+        - Reserve stake amount from each participant
+        - Create credit_hold record
+        - Fail match if either hold fails
+      </create_hold>
+
+      <release_hold>
+        - On match cancellation or forfeit before judging
+        - Return reserved credits to available
+        - Mark hold as released
+      </release_hold>
+
+      <settlement>
+        - On match finalization
+        - Winner receives loser's stake minus platform fee (10%)
+        - Ties split stakes minus fees
+        - Atomic transaction with idempotency
+        - Create ledger entries for all parties
+      </settlement>
+    </staking_flow>
+
+    <stripe_integration>
+      <credit_packages>
+        - Starter: $4.99 -> 100 credits
+        - Popular: $19.99 -> 500 credits (10% bonus)
+        - Pro: $49.99 -> 1500 credits (20% bonus)
+        - Team: $99.99 -> 3500 credits (30% bonus)
+        - Enterprise: $149.99 -> 5500 credits (40% bonus)
+      </credit_packages>
+
+      <checkout_flow>
+        - POST /api/payments/stripe/checkout with package_id
+        - Create Stripe Checkout Session
+        - Return checkout URL
+        - Redirect user to Stripe
+        - Handle success/cancel redirects
+      </checkout_flow>
+
+      <webhook_handling>
+        - POST /api/payments/stripe/webhook
+        - Verify Stripe signature
+        - Handle checkout.session.completed
+        - Idempotent credit issuance
+        - Handle refunds (charge.refunded)
+      </webhook_handling>
+    </stripe_integration>
+
+    <wallet_ui>
+      <balance_display>
+        - Large balance number
+        - Available vs reserved breakdown
+        - Active holds list with match links
+      </balance_display>
+
+      <purchase_flow>
+        - Package selection cards
+        - Highlight popular/best value
+        - Click to initiate Stripe checkout
+        - Success confirmation on return
+      </purchase_flow>
+
+      <transaction_history>
+        - Chronological ledger view
+        - Filter by type (purchases, matches, fees)
+        - Date range filter
+        - Search by match ID
+        - Pagination
+        - Export to CSV button (functional)
+      </transaction_history>
+    </wallet_ui>
+
+    <api_endpoints>
+      - GET /api/credits/balance (current balance)
+      - GET /api/credits/holds (active holds)
+      - GET /api/credits/history (transaction history)
+      - POST /api/payments/stripe/checkout (create checkout)
+      - POST /api/payments/stripe/webhook (Stripe webhooks)
+      - GET /api/payments/history (purchase history)
+    </api_endpoints>
+  </phase_7_credits_wallet>
+
+  <phase_8_rankings_disputes>
+    <title>Rankings, Seasons, Disputes, Moderation</title>
+    <status>COMPLETE</status>
+
+    <rating_system>
+      <glicko2>
+        - Initial rating: 1500
+        - Initial deviation: 350
+        - Initial volatility: 0.06
+        - Update after each match finalization
+        - Decay for inactive players (30+ days)
+      </glicko2>
+
+      <seasons>
+        - Named seasons (e.g., "Season 1: Genesis")
+        - Start and end dates
+        - Separate ratings per season
+        - Season rewards for top players
+        - Historical season records preserved
+      </seasons>
+
+      <stake_caps>
+        - Bronze (0-1299): 50 credits max
+        - Silver (1300-1599): 100 credits max
+        - Gold (1600-1899): 250 credits max
+        - Platinum (1900-2199): 500 credits max
+        - Diamond (2200+): 1000 credits max
+      </stake_caps>
+    </rating_system>
+
+    <leaderboard_ui>
+      <global_leaderboard>
+        - /leaderboard page
+        - Top 100 players by rating
+        - Season selector
+        - Category filter (overall, frontend, backend, etc.)
+        - Search by username
+        - Current user position highlight
+      </global_leaderboard>
+
+      <profile_rankings>
+        - Rating and tier badge on profile
+        - Rank position (e.g., #42)
+        - Rating history chart
+        - Win/loss/draw record
+      </profile_rankings>
+    </leaderboard_ui>
+
+    <dispute_system>
+      <user_dispute_flow>
+        - "Open Dispute" button on finalized matches (within 48h)
+        - Reason selection: scoring_error, technical_issue, opponent_cheating, other
+        - Evidence text area with markdown support
+        - File attachment for screenshots
+        - Submission confirmation
+      </user_dispute_flow>
+
+      <admin_dispute_flow>
+        - /admin/disputes page with queue
+        - Filter by status: open, in_review, resolved
+        - Dispute detail page with:
+          - Original match details
+          - Both submissions
+          - Current scores
+          - Dispute reason and evidence
+        - Actions:
+          - Start Review (moves to in_review)
+          - Re-judge (triggers new judging run)
+          - Resolve with outcome (upheld, rejected, modified)
+          - Add resolution notes
+      </admin_dispute_flow>
+
+      <dispute_outcomes>
+        - upheld: Original result stands, no action
+        - rejected: Scores modified per resolution
+        - modified: Partial adjustment to scores
+        - Settlement adjusted if outcome changes winner
+        - Audit log entry for all resolutions
+      </dispute_outcomes>
+    </dispute_system>
+
+    <moderation_system>
+      <user_reports>
+        - Report button on profiles
+        - Reason categories: cheating, harassment, inappropriate_content
+        - Evidence/description field
+        - Anonymous to reported user
+      </user_reports>
+
+      <admin_moderation>
+        - /admin/moderation page
+        - Reports queue with filtering
+        - User investigation view:
+          - Match history
+          - Submission patterns
+          - Previous reports/actions
+        - Actions:
+          - warn: Send warning message
+          - suspend: Temporary ban (duration configurable)
+          - ban: Permanent ban
+        - Action requires reason
+        - Audit log for all actions
+      </admin_moderation>
+
+      <enforcement>
+        - Suspended users cannot join matches
+        - Banned users cannot log in
+        - Active matches cancelled on ban
+        - Stakes refunded on forced cancellation
+      </enforcement>
+    </moderation_system>
+
+    <anti_abuse>
+      <collusion_detection>
+        - Flag frequent matches between same users
+        - Detect intentional forfeits
+        - Monitor stake-to-rating anomalies
+        - Alert moderators for review
+      </collusion_detection>
+
+      <repeat_opponent_throttling>
+        - Maximum 3 matches vs same opponent per day
+        - Increases diversity of competition
+        - Configurable per challenge category
+      </repeat_opponent_throttling>
+    </anti_abuse>
+
+    <api_endpoints>
+      - GET /api/leaderboard (paginated leaderboard)
+      - GET /api/ratings/me (current user rating)
+      - GET /api/ratings/history (rating history)
+      - GET /api/seasons (list seasons)
+      - POST /api/matches/:id/disputes (create dispute)
+      - GET /api/disputes/my (user's disputes)
+      - GET /api/admin/disputes (admin dispute queue)
+      - POST /api/admin/disputes/:id/review (start review)
+      - POST /api/admin/disputes/:id/resolve (resolve)
+      - POST /api/admin/disputes/:id/rejudge (trigger rejudge)
+      - GET /api/admin/moderation/reports (report queue)
+      - POST /api/admin/moderation/actions (take action)
+    </api_endpoints>
+  </phase_8_rankings_disputes>
+
+  <phase_9_tournaments>
+    <title>Tournaments & Prize Pools</title>
+    <status>COMPLETE</status>
+
+    <tournament_formats>
+      <single_elimination>
+        - Standard bracket, loser eliminated
+        - Power of 2 sizing with byes
+        - Seeding by rating
+      </single_elimination>
+
+      <double_elimination>
+        - Winners and losers brackets
+        - Grand finals from each bracket
+        - Bracket reset if losers winner wins
+      </double_elimination>
+
+      <swiss>
+        - Fixed number of rounds
+        - Pair by similar record
+        - No elimination, points accumulate
+        - Final standings by total points
+      </swiss>
+
+      <round_robin>
+        - Every participant plays every other
+        - Points for win/draw/loss
+        - Final standings by total points
+        - Tie-breakers: head-to-head, then rating
+      </round_robin>
+
+      <ladder>
+        - Ongoing competition
+        - Challenge players above you
+        - Win to swap positions
+        - Decay for inactivity
+      </ladder>
+    </tournament_formats>
+
+    <tournament_lifecycle>
+      <states>
+        - draft: Admin configuring
+        - registration: Open for signups
+        - check_in: Final confirmation period
+        - in_progress: Matches being played
+        - completed: All matches done
+        - cancelled: Tournament cancelled
+      </states>
+
+      <entry_flow>
+        - Browse tournaments at /tournaments
+        - View details at /tournaments/:id
+        - Register button (if registration open)
+        - Entry fee held from credits
+        - Check-in reminder notification
+        - Confirm check-in before start
+        - No-show forfeits entry fee
+      </entry_flow>
+    </tournament_lifecycle>
+
+    <bracket_ui>
+      <bracket_viewer>
+        - Visual bracket representation
+        - Match cards with participants and scores
+        - Winner highlighting
+        - Click match to view details
+        - Auto-scroll to current round
+        - Mobile-responsive layout
+      </bracket_viewer>
+
+      <standings_table>
+        - For Swiss/round-robin
+        - Sortable columns
+        - Win/loss/draw record
+        - Points total
+        - Opponent strength
+      </standings_table>
+    </bracket_ui>
+
+    <prize_pools>
+      <prize_types>
+        - cash: USD via PayPal/Stripe Connect
+        - crypto: Supported tokens via wallet
+        - hardware: Physical prizes shipped
+        - saas_bundle: Software subscriptions/credits
+        - credits: Platform credits
+      </prize_types>
+
+      <prize_distribution>
+        - Configurable per-place amounts
+        - Example: 1st 50%, 2nd 30%, 3rd 20%
+        - Or flat amounts per place
+        - Ties split evenly
+      </prize_distribution>
+    </prize_pools>
+
+    <prize_claims>
+      <user_flow>
+        - Winners see "Claim Prize" on tournament page
+        - Select prize type (if options)
+        - Provide required info (PayPal email, wallet address, shipping)
+        - Submit claim
+        - Track status: pending, approved, fulfilled, denied
+      </user_flow>
+
+      <admin_flow>
+        - /admin/prizes page
+        - Claims queue with filtering
+        - Review claim details
+        - Verify winner eligibility
+        - Approve or deny with reason
+        - Mark fulfilled when sent
+        - Upload proof of fulfillment
+      </admin_flow>
+    </prize_claims>
+
+    <api_endpoints>
+      - GET /api/tournaments (list tournaments)
+      - GET /api/tournaments/:id (tournament details)
+      - POST /api/tournaments/:id/register (register)
+      - DELETE /api/tournaments/:id/register (withdraw)
+      - POST /api/tournaments/:id/check-in (confirm participation)
+      - GET /api/tournaments/:id/bracket (bracket data)
+      - GET /api/tournaments/:id/standings (standings)
+      - POST /api/prize-claims (submit claim)
+      - GET /api/prize-claims/my (user's claims)
+      - POST /api/admin/tournaments (create tournament)
+      - PUT /api/admin/tournaments/:id (update)
+      - POST /api/admin/tournaments/:id/publish (open registration)
+      - POST /api/admin/tournaments/:id/start (begin tournament)
+      - GET /api/admin/prize-claims (claims queue)
+      - POST /api/admin/prize-claims/:id/approve (approve)
+      - POST /api/admin/prize-claims/:id/deny (deny)
+      - POST /api/admin/prize-claims/:id/fulfill (mark fulfilled)
+    </api_endpoints>
+  </phase_9_tournaments>
+
+  <phase_10_automation_services>
+    <title>Automation Redemption Products</title>
+    <status>DEFERRED - NOT IMPLEMENTED</status>
+    <note>
+      This phase is intentionally excluded from the current implementation scope.
+      Credits are currently only usable for match stakes and tournament entries.
+      Future implementation would add:
+      - Batch Runs
+      - Evaluation Pipelines
+      - CI Checks
+      - Multi-Model Comparison
+      - Agent Jobs
+    </note>
+  </phase_10_automation_services>
+
+  <phase_11_production_hardening>
+    <title>Production Hardening & Scale</title>
+    <status>COMPLETE</status>
+
+    <security>
+      <penetration_testing>
+        - Annual third-party pen test
+        - Remediation SLA: Critical 24h, High 7d, Medium 30d
+        - Retest after remediation
+      </penetration_testing>
+
+      <dependency_scanning>
+        - Dependabot enabled
+        - Weekly vulnerability scans
+        - Automatic PRs for patches
+        - Block merge on critical vulnerabilities
+      </dependency_scanning>
+
+      <secrets_management>
+        - HashiCorp Vault or AWS Secrets Manager
+        - No secrets in environment variables
+        - Rotation policies for all credentials
+        - Audit logging for secret access
+      </secrets_management>
+
+      <rate_limiting>
+        - Global: 1000 req/min per IP
+        - Auth endpoints: 10 req/min per IP
+        - Upload endpoints: 20 req/min per user
+        - API endpoints: 100 req/min per user
+        - Configurable per-route overrides
+      </rate_limiting>
+    </security>
+
+    <privacy_compliance>
+      <gdpr>
+        - Data export: GET /api/users/me/export
+        - Returns all user data as JSON
+        - Account deletion: DELETE /api/users/me
+        - 30-day soft delete, then hard delete
+        - Anonymization of historical records
+      </gdpr>
+
+      <ccpa>
+        - Same export/delete as GDPR
+        - Do Not Sell toggle (N/A, no data selling)
+        - Privacy policy updated
+      </ccpa>
+
+      <data_retention>
+        - Active data: PostgreSQL with backups
+        - Artifacts: 90 days standard, 1 year for tournaments
+        - Logs: 30 days hot, 180 days cold
+        - Audit logs: 7 years
+        - Automated cleanup jobs
+      </data_retention>
+    </privacy_compliance>
+
+    <scalability>
+      <horizontal_scaling>
+        - Stateless API servers behind load balancer
+        - Redis cluster for sessions/cache
+        - PostgreSQL read replicas for queries
+        - S3 for artifact storage (unlimited)
+      </horizontal_scaling>
+
+      <queue_scaling>
+        - BullMQ workers auto-scale with queue depth
+        - Separate queues for judging, notifications, cleanup
+        - Dead letter queue for failed jobs
+        - Monitoring and alerting on queue backlog
+      </queue_scaling>
+
+      <database_optimization>
+        - Connection pooling with PgBouncer
+        - Indexed queries for all list endpoints
+        - Materialized views for leaderboard
+        - Query performance monitoring
+      </database_optimization>
+    </scalability>
+
+    <load_testing>
+      <scenarios>
+        - 1000 concurrent match starts
+        - 500 concurrent submission uploads
+        - 100 concurrent judging runs
+        - 10000 leaderboard queries/minute
+      </scenarios>
+
+      <tools>
+        - k6 for load testing scripts
+        - Grafana for real-time metrics
+        - Automated regression in CI
+      </tools>
+
+      <slos>
+        - Match start: 99.9% success, p95 < 500ms
+        - Upload: 99.5% success, p95 < 30s for 50MB
+        - Judging: 99% completion, p95 < 5 minutes
+        - API: 99.9% availability, p95 < 200ms
+      </slos>
+    </load_testing>
+
+    <disaster_recovery>
+      <backups>
+        - PostgreSQL: Daily snapshots, 30-day retention
+        - Point-in-time recovery enabled
+        - Cross-region replication
+        - Monthly restore tests
+      </backups>
+
+      <incident_response>
+        - On-call rotation
+        - PagerDuty integration
+        - Runbooks for all alerts
+        - Post-incident reviews
+        - Status page for public communication
+      </incident_response>
+    </disaster_recovery>
+
+    <extension_marketplace>
+      <vs_code_marketplace>
+        - Extension published to VS Code Marketplace
+        - Signed VSIX packages
+        - Automatic update notifications
+        - Version changelog
+      </vs_code_marketplace>
+
+      <telemetry>
+        - Opt-in usage analytics
+        - Error reporting (Sentry)
+        - Extension version tracking
+        - Feature usage metrics
+      </telemetry>
+    </extension_marketplace>
+  </phase_11_production_hardening>
+
+  <complete_ui_layout>
+    <web_app>
+      <public_pages>
+        <home>Landing page with hero, features, CTA</home>
+        <challenges>Challenge discovery with filters, search, pagination</challenges>
+        <leaderboard>Global rankings with season/category filters</leaderboard>
+        <tournaments>Tournament listing with status filters</tournaments>
+        <login>OAuth login buttons (GitHub, Google)</login>
+        <device>Device code entry for extension auth</device>
+      </public_pages>
+
+      <authenticated_pages>
+        <matches>User's match history with filters</matches>
+        <match_detail>Full match view with timer, participants, actions, results</match_detail>
+        <match_compare>Side-by-side artifact comparison</match_compare>
+        <wallet>Balance, holds, purchases, transaction history</wallet>
+        <profile>User profile with stats, match history, settings</profile>
+        <profile_edit>Edit display name, avatar, preferences</profile_edit>
+        <artifacts>Artifact viewer with file tree, code display</artifacts>
+        <tournament_detail>Tournament bracket, standings, registration</tournament_detail>
+        <prize_claim>Prize claim form for winners</prize_claim>
+        <dispute_create>Open dispute form</dispute_create>
+      </authenticated_pages>
+
+      <admin_pages>
+        <admin_dashboard>Overview metrics and quick actions</admin_dashboard>
+        <admin_challenges>Challenge CRUD, versions, publishing</admin_challenges>
+        <admin_challenge_edit>Challenge form with requirements/rubric builders</admin_challenge_edit>
+        <admin_disputes>Dispute queue with review/resolve actions</admin_disputes>
+        <admin_dispute_detail>Dispute review with match context</admin_dispute_detail>
+        <admin_moderation>User reports and sanction actions</admin_moderation>
+        <admin_tournaments>Tournament CRUD and management</admin_tournaments>
+        <admin_prizes>Prize claims queue with approval workflow</admin_prizes>
+        <admin_runners>Judge image management</admin_runners>
+        <admin_audit>Audit log explorer with filters</admin_audit>
+      </admin_pages>
+    </web_app>
+
+    <extension>
+      <views>
+        <challenges_tree>Grouped challenge list with filters</challenges_tree>
+        <match_tree>Active match details and actions</match_tree>
+        <history_tree>Recent match history</history_tree>
+      </views>
+
+      <panels>
+        <active_match_panel>WebView with timer, participants, actions</active_match_panel>
+        <submission_panel>File preview, exclusions, upload progress</submission_panel>
+      </panels>
+
+      <status_bar>
+        <timer>Countdown during active match</timer>
+        <user>Authenticated user display</user>
+      </status_bar>
+
+      <commands>
+        - reporivals.signIn
+        - reporivals.signOut
+        - reporivals.showAuthStatus
+        - reporivals.browseChallenges
+        - reporivals.showChallengeDetails
+        - reporivals.joinMatch
+        - reporivals.createInviteMatch
+        - reporivals.submit
+        - reporivals.lockSubmission
+        - reporivals.setReady
+        - reporivals.forfeit
+        - reporivals.openMatchInWeb
+        - reporivals.viewMatchDetails
+        - reporivals.refreshChallenges
+        - reporivals.filterChallenges
+        - reporivals.downloadTemplate
+        - reporivals.showActiveMatchPanel
+      </commands>
+    </extension>
+  </complete_ui_layout>
+
+  <complete_api_endpoints>
+    <authentication>
+      - POST /api/auth/device/start
+      - POST /api/auth/device/confirm
+      - POST /api/auth/refresh
+      - POST /api/auth/logout
+      - GET /api/auth/me
+      - GET /api/auth/github (OAuth redirect)
+      - GET /api/auth/github/callback
+      - GET /api/auth/google (OAuth redirect)
+      - GET /api/auth/google/callback
+    </authentication>
+
+    <challenges>
+      - GET /api/challenges
+      - GET /api/challenges/:id
+      - GET /api/challenges/:id/versions
+      - GET /api/challenge-versions/:versionId
+      - GET /api/challenge-versions/:versionId/template (download)
+    </challenges>
+
+    <matches>
+      - GET /api/matches
+      - POST /api/matches
+      - POST /api/matches/queue
+      - GET /api/matches/:id
+      - POST /api/matches/:id/join
+      - POST /api/matches/:id/ready
+      - POST /api/matches/:id/forfeit
+      - POST /api/matches/:id/cancel
+      - GET /api/matches/:id/events (SSE)
+      - GET /api/matches/:id/results
+      - GET /api/matches/:id/compare
+      - GET /api/matches/:id/compare/files/:path
+    </matches>
+
+    <submissions>
+      - POST /api/matches/:id/submissions/init
+      - PUT /api/uploads/:uploadId/part
+      - POST /api/uploads/:uploadId/complete
+      - POST /api/matches/:id/submissions/commit
+      - POST /api/matches/:id/submissions/from-github
+      - POST /api/matches/:id/submissions/lock
+      - GET /api/submissions/:id
+    </submissions>
+
+    <artifacts>
+      - GET /api/artifacts/:id
+      - GET /api/artifacts/:id/files/:path
+      - GET /api/artifacts/:id/download
+      - POST /api/artifacts/:id/scan
+    </artifacts>
+
+    <judging>
+      - GET /api/judgement-runs/:id
+      - GET /api/judgement-runs/:id/logs
+    </judging>
+
+    <credits>
+      - GET /api/credits/balance
+      - GET /api/credits/holds
+      - GET /api/credits/history
+    </credits>
+
+    <payments>
+      - POST /api/payments/stripe/checkout
+      - POST /api/payments/stripe/webhook
+      - GET /api/payments/history
+    </payments>
+
+    <ratings>
+      - GET /api/ratings/me
+      - GET /api/ratings/users/:userId
+      - GET /api/ratings/history
+      - GET /api/ratings/preview/:opponentId
+      - GET /api/ratings/stake-cap
+      - GET /api/leaderboard
+      - GET /api/seasons
+    </ratings>
+
+    <disputes>
+      - POST /api/matches/:id/disputes
+      - GET /api/matches/:id/disputes
+      - GET /api/disputes/my
+    </disputes>
+
+    <tournaments>
+      - GET /api/tournaments
+      - GET /api/tournaments/:id
+      - POST /api/tournaments/:id/register
+      - DELETE /api/tournaments/:id/register
+      - POST /api/tournaments/:id/check-in
+      - GET /api/tournaments/:id/bracket
+      - GET /api/tournaments/:id/standings
+    </tournaments>
+
+    <prizes>
+      - POST /api/prize-claims
+      - GET /api/prize-claims/my
+    </prizes>
+
+    <users>
+      - GET /api/users/:username/profile
+      - GET /api/users/:username/matches
+      - PUT /api/users/me (update profile)
+      - GET /api/users/me/export (GDPR export)
+      - DELETE /api/users/me (account deletion)
+    </users>
+
+    <admin_challenges>
+      - GET /api/admin/challenges
+      - POST /api/admin/challenges
+      - PUT /api/admin/challenges/:id
+      - DELETE /api/admin/challenges/:id
+      - POST /api/admin/challenges/:id/publish
+      - POST /api/admin/challenges/:id/unpublish
+      - POST /api/admin/challenges/:id/versions
+      - PUT /api/admin/challenge-versions/:id
+      - POST /api/admin/challenge-versions/:id/publish
+    </admin_challenges>
+
+    <admin_disputes>
+      - GET /api/admin/disputes
+      - GET /api/admin/disputes/:id
+      - POST /api/admin/disputes/:id/review
+      - POST /api/admin/disputes/:id/resolve
+      - POST /api/admin/disputes/:id/rejudge
+    </admin_disputes>
+
+    <admin_moderation>
+      - GET /api/admin/moderation/reports
+      - POST /api/admin/moderation/actions
+      - GET /api/admin/moderation/users/:id
+    </admin_moderation>
+
+    <admin_tournaments>
+      - POST /api/admin/tournaments
+      - PUT /api/admin/tournaments/:id
+      - DELETE /api/admin/tournaments/:id
+      - POST /api/admin/tournaments/:id/publish
+      - POST /api/admin/tournaments/:id/start
+      - POST /api/admin/tournaments/:id/cancel
+    </admin_tournaments>
+
+    <admin_prizes>
+      - GET /api/admin/prize-claims
+      - POST /api/admin/prize-claims/:id/approve
+      - POST /api/admin/prize-claims/:id/deny
+      - POST /api/admin/prize-claims/:id/fulfill
+    </admin_prizes>
+
+    <admin_judging>
+      - POST /api/admin/judging/retry/:matchId
+      - GET /api/admin/runners
+      - POST /api/admin/runners
+      - DELETE /api/admin/runners/:id
+    </admin_judging>
+
+    <admin_ops>
+      - GET /api/admin/audit
+      - GET /api/admin/system/health
+      - GET /api/admin/system/metrics
+    </admin_ops>
+  </complete_api_endpoints>
+
+  <success_criteria>
+    <functionality>
+      - Match join/start/submit/judge/settle works reliably end-to-end
+      - All UI pages fetch real data from API (no mock data)
+      - Auth context properly wired to all authenticated features
+      - Judging results displayed with full breakdown
+      - Disputes can be created by users and resolved by admins
+      - Tournaments run from registration to prize fulfillment
+      - All admin CRUD operations functional
+    </functionality>
+
+    <user_experience>
+      - Builders compete without workflow disruption
+      - Clear explanations for wins/losses via judging results
+      - Credits feel valuable via staking and prizes
+      - Artifacts and comparisons are viewable and shareable
+      - Real-time updates keep users informed during matches
+    </user_experience>
+
+    <technical_quality>
+      - High test coverage (80%+ on critical paths)
+      - All SLOs met in production
+      - No mock data in production code
+      - All presigned URLs use real S3 integration
+      - GitHub repo submission fully functional
+      - Observability covers all services
+    </technical_quality>
+  </success_criteria>
+</project_specification>

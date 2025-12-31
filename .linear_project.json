@@ -8,7 +8,37 @@
   "project_url": "https://linear.app/quiverflow/project/codearena-6e53d3100b68",
   "meta_issue_id": "55fbd3f3-972b-452c-83af-2292a058aa13",
   "meta_issue_identifier": "QUI-55",
-  "total_issues": 50,
-  "issue_range": "QUI-5 to QUI-54",
-  "notes": "Project initialized by initializer agent. 50 issues created covering infrastructure, authentication, challenges, matches, submissions, judging, credits, web UI, VS Code extension, admin, tournaments, and styling."
+  "total_issues": 116,
+  "issue_range": "QUI-5 to QUI-131",
+  "notes": "Project initialized by initializer agent. 50 issues created covering infrastructure, authentication, challenges, matches, submissions, judging, credits, web UI, VS Code extension, admin, tournaments, and styling. Renamed to RepoRivals (QUI-56). Rewards Marketplace feature added (15 issues). Complete spec addition (50 issues) covering all remaining phases.",
+  "feature_additions": [
+    {
+      "date": "2025-12-31T09:56:00.000Z",
+      "issues_added": 15,
+      "issue_range": "QUI-67 to QUI-81",
+      "sections": ["rewards_marketplace"],
+      "description": "Rewards Marketplace - SaaS partner offsets, sponsored compute, leaderboard rewards, admin tools"
+    }
+  ],
+  "spec_additions": [
+    {
+      "date": "2025-12-31T10:35:00.000Z",
+      "spec_file": "COMPLETE_SPEC.txt",
+      "issues_added": 50,
+      "issue_range": "QUI-82 to QUI-131",
+      "phases_covered": [
+        "Phase 1: Foundation & Architecture",
+        "Phase 2: Identity & Extension Auth",
+        "Phase 3: Challenges & Versioning",
+        "Phase 4: Match Engine & Matchmaking",
+        "Phase 5: Submissions & Artifacts",
+        "Phase 6: Judging & Scoring",
+        "Phase 7: Credits Wallet & Ledger",
+        "Phase 8: Rankings, Seasons, Disputes, Moderation",
+        "Phase 9: Tournaments & Prize Pools",
+        "Phase 11: Production Hardening & Scale"
+      ],
+      "description": "Complete implementation specification covering infrastructure, observability, auth flows, challenge versioning, match state machine, judging pipeline, credit ledger, anti-abuse, tournament formats, and production hardening"
+    }
+  ]
 }
