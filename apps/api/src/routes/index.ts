@@ -12,6 +12,7 @@ import { submissionRoutes } from './submissions';
 import { storageRoutes } from './storage';
 import { adminRoutes } from './admin';
 import { tournamentRoutes } from './tournaments';
+import { disputeRoutes } from './disputes';
 import { initializeMatchEvents } from '../lib/match-events';
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -50,6 +51,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Tournament API routes
   await app.register(tournamentRoutes);
+
+  // Dispute API routes
+  await app.register(disputeRoutes);
 
   // Admin API routes (TODO: add auth middleware)
   await app.register(adminRoutes);
