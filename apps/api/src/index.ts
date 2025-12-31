@@ -8,6 +8,8 @@ import { closeDatabaseConnection } from './db';
 import { env } from './lib/env';
 import { logger } from './lib/logger';
 import { cleanupAllConnections } from './lib/match-events';
+import { closeQueues } from './lib/queue';
+import { closeRedis } from './lib/redis';
 import {
   registerCors,
   registerErrorHandler,
@@ -15,7 +17,6 @@ import {
   registerRequestId,
   registerRateLimit,
 } from './plugins';
-import { closeRedis } from './lib/session';
 import { registerRoutes } from './routes';
 
 const PORT = parseInt(env.PORT, 10);
@@ -57,6 +58,7 @@ async function start() {
         // Cleanup WebSocket/SSE connections
         cleanupAllConnections();
         await app.close();
+        await closeQueues();
         await closeRedis();
         await closeDatabaseConnection();
         logger.info('Server closed successfully');

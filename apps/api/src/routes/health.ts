@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify';
 
 import { checkDatabaseConnection } from '../db';
+import { checkRedisConnection } from '../lib/redis';
+import { checkStorageConnection } from '../lib/storage';
 
 interface HealthResponse {
   status: 'ok' | 'degraded' | 'unhealthy';
@@ -9,8 +11,8 @@ interface HealthResponse {
   uptime: number;
   checks?: {
     database: boolean;
-    redis?: boolean;
-    s3?: boolean;
+    redis: boolean;
+    s3: boolean;
   };
 }
 
@@ -27,11 +29,13 @@ export async function healthRoutes(app: FastifyInstance) {
 
   // Detailed readiness check - verifies all dependencies
   app.get('/api/health/ready', async (request, reply): Promise<HealthResponse> => {
-    const checks = {
-      database: await checkDatabaseConnection(),
-      // TODO: Add Redis and S3 checks
-    };
+    const [database, redis, s3] = await Promise.all([
+      checkDatabaseConnection(),
+      checkRedisConnection(),
+      checkStorageConnection(),
+    ]);
 
+    const checks = { database, redis, s3 };
     const isHealthy = Object.values(checks).every(Boolean);
     const status = isHealthy ? 'ok' : 'degraded';
 

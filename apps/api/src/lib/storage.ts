@@ -534,6 +534,23 @@ class StorageClient {
   }
 }
 
+// Singleton instance
+const storageClient = new StorageClient();
+
+/**
+ * Check storage connection health
+ */
+export async function checkStorageConnection(): Promise<boolean> {
+  try {
+    // Try to check if the artifacts bucket exists by listing 1 object
+    await storageClient.list(BUCKETS.ARTIFACTS, { maxKeys: 1 });
+    return true;
+  } catch (error) {
+    console.error('Storage health check failed:', error);
+    return false;
+  }
+}
+
 // Content-addressed storage helpers
 
 /**

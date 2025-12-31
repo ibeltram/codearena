@@ -9,12 +9,12 @@
  */
 
 import crypto from 'crypto';
-import { Redis } from 'ioredis';
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { db } from '../db';
 import { users, sessions, type User, type Session } from '../db/schema';
 import { env } from './env';
+import { getRedis } from './redis';
 
 // Token configuration
 const ACCESS_TOKEN_EXPIRY_SECONDS = 15 * 60; // 15 minutes
@@ -67,32 +67,6 @@ export interface SessionInfo {
   lastUsedAt: Date;
   createdAt: Date;
   isCurrent: boolean;
-}
-
-// Redis client singleton
-let redis: Redis | null = null;
-
-export function getRedis(): Redis {
-  if (!redis) {
-    redis = new Redis(env.REDIS_URL, {
-      maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
-      enableReadyCheck: true,
-      lazyConnect: true,
-    });
-
-    redis.on('error', (err) => {
-      console.error('Redis connection error:', err);
-    });
-  }
-  return redis;
-}
-
-export async function closeRedis(): Promise<void> {
-  if (redis) {
-    await redis.quit();
-    redis = null;
-  }
 }
 
 // Helper functions

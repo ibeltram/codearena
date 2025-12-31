@@ -12,11 +12,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { users, oauthAccounts } from '../db/schema';
 import { env } from '../lib/env';
+import { getRedis } from '../lib/redis';
 import {
   generateTokenPair,
   verifyAccessToken,
   getDeviceInfo,
-  getRedis,
 } from '../lib/session';
 
 // Redis key prefix for OAuth state
