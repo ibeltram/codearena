@@ -21,14 +21,14 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center">
-        {/* Mobile menu button */}
+        {/* Mobile menu button - touch-friendly 44px minimum */}
         <Button
           variant="ghost"
           size="icon"
-          className="mr-2 md:hidden"
+          className="mr-2 md:hidden min-h-[44px] min-w-[44px]"
           onClick={toggleSidebar}
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-6 w-6" />
           <span className="sr-only">Toggle menu</span>
         </Button>
 
@@ -69,20 +69,20 @@ export function Header() {
           </Link>
         </nav>
 
-        {/* Right side actions */}
-        <div className="flex flex-1 items-center justify-end space-x-2">
+        {/* Right side actions - touch-friendly spacing */}
+        <div className="flex flex-1 items-center justify-end space-x-1 sm:space-x-2">
           <ThemeToggleDropdown />
           {isAuthenticated && user ? (
             <>
               <Link href="/wallet">
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]">
                   <Wallet className="h-5 w-5" />
                   <span className="sr-only">Wallet</span>
                 </Button>
               </Link>
               <Link href="/profile">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <Avatar className="h-6 w-6">
+                <Button variant="ghost" size="sm" className="gap-2 min-h-[44px]">
+                  <Avatar className="h-7 w-7">
                     <AvatarImage src={user.avatarUrl || undefined} alt={user.displayName} />
                     <AvatarFallback>
                       {user.displayName.charAt(0).toUpperCase()}
@@ -94,13 +94,16 @@ export function Header() {
             </>
           ) : (
             <>
-              <Link href="/login">
-                <Button variant="ghost" size="sm">
+              <Link href="/login" className="hidden sm:block">
+                <Button variant="ghost" size="sm" className="min-h-[44px]">
                   Sign In
                 </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm">Get Started</Button>
+                <Button size="sm" className="min-h-[44px] text-xs sm:text-sm">
+                  <span className="sm:hidden">Start</span>
+                  <span className="hidden sm:inline">Get Started</span>
+                </Button>
               </Link>
             </>
           )}

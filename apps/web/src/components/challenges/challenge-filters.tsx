@@ -77,13 +77,14 @@ export function ChallengeFilters({ filters, onFilterChange }: ChallengeFiltersPr
         />
       </div>
 
-      {/* Filters row */}
-      <div className="flex flex-wrap gap-3">
+      {/* Filters row - responsive grid on mobile, flex on larger screens */}
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3">
         {/* Category filter */}
-        <div className="w-40">
+        <div className="col-span-1 sm:w-40">
           <Select
             value={filters.category || ''}
             onChange={handleCategoryChange}
+            className="w-full min-h-[44px]"
           >
             <option value="">All Categories</option>
             {(Object.keys(categoryLabels) as ChallengeCategory[]).map((cat) => (
@@ -95,10 +96,11 @@ export function ChallengeFilters({ filters, onFilterChange }: ChallengeFiltersPr
         </div>
 
         {/* Difficulty filter */}
-        <div className="w-40">
+        <div className="col-span-1 sm:w-40">
           <Select
             value={filters.difficulty || ''}
             onChange={handleDifficultyChange}
+            className="w-full min-h-[44px]"
           >
             <option value="">All Difficulties</option>
             {(Object.keys(difficultyLabels) as ChallengeDifficulty[]).map(
@@ -112,8 +114,12 @@ export function ChallengeFilters({ filters, onFilterChange }: ChallengeFiltersPr
         </div>
 
         {/* Sort */}
-        <div className="w-36">
-          <Select value={filters.sort || 'newest'} onChange={handleSortChange}>
+        <div className="col-span-1 sm:w-36">
+          <Select
+            value={filters.sort || 'newest'}
+            onChange={handleSortChange}
+            className="w-full min-h-[44px]"
+          >
             <option value="newest">Newest</option>
             <option value="oldest">Oldest</option>
             <option value="popular">Popular</option>
@@ -127,7 +133,7 @@ export function ChallengeFilters({ filters, onFilterChange }: ChallengeFiltersPr
             variant="ghost"
             size="sm"
             onClick={clearFilters}
-            className="gap-1"
+            className="gap-1 min-h-[44px] col-span-1"
           >
             <X className="h-4 w-4" />
             Clear

@@ -71,7 +71,7 @@ export function TournamentFilters({
 
   return (
     <div className="space-y-4">
-      {/* Status tabs */}
+      {/* Status tabs - touch-friendly */}
       <div className="flex flex-wrap gap-2">
         {statusOptions.map((option) => (
           <Button
@@ -83,6 +83,7 @@ export function TournamentFilters({
                 : 'outline'
             }
             size="sm"
+            className="min-h-[44px] px-4"
             onClick={() => handleStatusChange(option.value)}
           >
             {option.label}
@@ -90,15 +91,15 @@ export function TournamentFilters({
         ))}
       </div>
 
-      {/* Filter row */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Format filter */}
+      {/* Filter row - responsive grid on mobile */}
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-3">
+        {/* Format filter - touch-friendly */}
         <select
           value={filters.format || 'all'}
           onChange={(e) =>
             handleFormatChange(e.target.value as TournamentFormat | 'all')
           }
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="min-h-[44px] rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           {formatOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -107,22 +108,23 @@ export function TournamentFilters({
           ))}
         </select>
 
-        {/* Upcoming toggle */}
+        {/* Upcoming toggle - touch-friendly */}
         <Button
           variant={filters.upcoming ? 'default' : 'outline'}
           size="sm"
+          className="min-h-[44px]"
           onClick={handleUpcomingToggle}
         >
           Upcoming Only
         </Button>
 
-        {/* Clear filters */}
+        {/* Clear filters - touch-friendly */}
         {hasActiveFilters && (
           <Button
             variant="ghost"
             size="sm"
             onClick={clearFilters}
-            className="text-muted-foreground"
+            className="text-muted-foreground min-h-[44px]"
           >
             <X className="h-4 w-4 mr-1" />
             Clear

@@ -19,7 +19,8 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      sidebarOpen: true,
+      // Default sidebar closed - will be shown on desktop via CSS md:translate-x-0
+      sidebarOpen: false,
       sidebarCollapsed: false,
       theme: 'system',
 
@@ -38,6 +39,11 @@ export const useUIStore = create<UIState>()(
     {
       name: 'codearena-ui',
       storage: createJSONStorage(() => localStorage),
+      // Don't persist sidebarOpen state - it should default to closed on mobile
+      partialize: (state) => ({
+        sidebarCollapsed: state.sidebarCollapsed,
+        theme: state.theme
+      }),
     }
   )
 );

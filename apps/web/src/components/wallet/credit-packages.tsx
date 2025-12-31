@@ -89,9 +89,9 @@ function PackageCard({
           </p>
         )}
 
-        {/* Purchase button */}
+        {/* Purchase button - touch-friendly */}
         <Button
-          className="w-full"
+          className="w-full min-h-[44px]"
           variant={isSelected ? 'default' : 'outline'}
           onClick={(e) => {
             e.stopPropagation();

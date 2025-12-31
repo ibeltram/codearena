@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useCallback, useEffect } from 'react';
 import {
   Home,
   Swords,
@@ -13,6 +14,7 @@ import {
   ChevronLeft,
   Shield,
   Medal,
+  X,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -45,6 +47,19 @@ export function Sidebar() {
   const { sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed } =
     useUIStore();
 
+  // Close sidebar on mobile when route changes
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname, setSidebarOpen]);
+
+  // Close sidebar on mobile when clicking a link
+  const handleLinkClick = useCallback(() => {
+    // Only close on mobile (check window width)
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  }, [setSidebarOpen]);
+
   const isAdmin = user?.role === 'admin' || user?.role === 'moderator';
 
   return (
@@ -68,11 +83,22 @@ export function Sidebar() {
         {/* Sidebar header */}
         <div className="flex h-14 items-center justify-between border-b px-4">
           {!sidebarCollapsed && (
-            <Link href="/" className="flex items-center space-x-2">
+            <Link href="/" className="flex items-center space-x-2" onClick={handleLinkClick}>
               <Swords className="h-6 w-6 text-primary" />
               <span className="font-bold">CodeArena</span>
             </Link>
           )}
+          {/* Close button for mobile */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden min-h-[44px] min-w-[44px]"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <X className="h-5 w-5" />
+            <span className="sr-only">Close sidebar</span>
+          </Button>
+          {/* Collapse button for desktop */}
           <Button
             variant="ghost"
             size="icon"
@@ -96,14 +122,16 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={handleLinkClick}
                 className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  // Touch-friendly: min-height 44px for mobile accessibility
+                  'flex items-center gap-3 rounded-lg px-3 py-3 min-h-[44px] text-sm font-medium transition-colors',
                   pathname === item.href
                     ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent'
                 )}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
+                <item.icon className="h-5 w-5 shrink-0" />
                 {!sidebarCollapsed && <span>{item.label}</span>}
               </Link>
             ))}
@@ -118,14 +146,16 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={handleLinkClick}
                     className={cn(
-                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      // Touch-friendly: min-height 44px for mobile accessibility
+                      'flex items-center gap-3 rounded-lg px-3 py-3 min-h-[44px] text-sm font-medium transition-colors',
                       pathname === item.href
                         ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent'
                     )}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
+                    <item.icon className="h-5 w-5 shrink-0" />
                     {!sidebarCollapsed && <span>{item.label}</span>}
                   </Link>
                 ))}
@@ -142,14 +172,16 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={handleLinkClick}
                     className={cn(
-                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      // Touch-friendly: min-height 44px for mobile accessibility
+                      'flex items-center gap-3 rounded-lg px-3 py-3 min-h-[44px] text-sm font-medium transition-colors',
                       pathname.startsWith(item.href)
                         ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent'
                     )}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
+                    <item.icon className="h-5 w-5 shrink-0" />
                     {!sidebarCollapsed && <span>{item.label}</span>}
                   </Link>
                 ))}
