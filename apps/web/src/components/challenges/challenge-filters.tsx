@@ -3,7 +3,7 @@
 import { Search, X } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { SimpleSelect as Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import {
   ChallengeCategory,

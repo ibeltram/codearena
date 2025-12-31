@@ -25,7 +25,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 import { useCreditHistory } from '@/hooks';
 import {
@@ -38,6 +37,17 @@ import {
 } from '@/types/wallet';
 
 const ITEMS_PER_PAGE = 10;
+
+const filterOptions: Record<string, string> = {
+  all: 'All Transactions',
+  purchase: 'Purchases',
+  earn: 'Earnings',
+  stake_hold: 'Stakes',
+  stake_release: 'Releases',
+  fee: 'Fees',
+  refund: 'Refunds',
+  redemption: 'Redemptions',
+};
 
 const transactionIcons: Record<CreditTransactionType, React.ReactNode> = {
   purchase: <CreditCard className="h-4 w-4" />,
@@ -177,17 +187,14 @@ export function TransactionHistory() {
           >
             <SelectTrigger className="w-[180px]">
               <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Filter by type" />
+              <span>{filterOptions[filters.type || 'all']}</span>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Transactions</SelectItem>
-              <SelectItem value="purchase">Purchases</SelectItem>
-              <SelectItem value="earn">Earnings</SelectItem>
-              <SelectItem value="stake_hold">Stakes</SelectItem>
-              <SelectItem value="stake_release">Releases</SelectItem>
-              <SelectItem value="fee">Fees</SelectItem>
-              <SelectItem value="refund">Refunds</SelectItem>
-              <SelectItem value="redemption">Redemptions</SelectItem>
+              {Object.entries(filterOptions).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button variant="outline" size="sm">
