@@ -42,7 +42,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 
 | Feature | Backend Status | UI Status | Issue |
 |---------|---------------|-----------|-------|
-| **User Profile** | API hooks exist | Uses extensive mock data | Lines 39-189 hardcoded mock data |
+| **User Profile** | ✅ FIXED | ✅ Real data | Public profile API implemented with stats/badges |
 | **Artifact Viewer** | API hooks exist | Uses mock artifact | `useArtifact()` unused, mock data instead |
 | **Match Comparison/Diff** | Returns mock | Uses mock comparison | `useMatchComparison()` returns mock |
 | **File Content Preview** | Returns mock content | Fake file content | API returns mock based on extension |
