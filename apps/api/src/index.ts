@@ -11,6 +11,7 @@ import { cleanupAllConnections } from './lib/match-events';
 import { closeQueues } from './lib/queue';
 import { closeRedis } from './lib/redis';
 import {
+  registerCookie,
   registerCors,
   registerErrorHandler,
   registerJwt,
@@ -34,6 +35,7 @@ async function buildApp() {
   await app.register(helmet, { global: true });
   await app.register(sensible);
   await registerRequestId(app);
+  await registerCookie(app); // Cookie support for session management
   await registerCors(app);
   await registerRateLimit(app);
   await registerJwt(app);

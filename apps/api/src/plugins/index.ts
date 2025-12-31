@@ -1,3 +1,4 @@
+export { registerCookie } from './cookie';
 export { registerCors } from './cors';
 export { registerErrorHandler } from './errorHandler';
 export { registerJwt } from './jwt';

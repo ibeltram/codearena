@@ -28,6 +28,11 @@ import {
   cleanupExpiredDeviceCodes,
   checkRateLimit,
   blacklistAccessToken,
+  setAuthCookies,
+  clearAuthCookies,
+  extractAccessToken,
+  extractRefreshToken,
+  isWebBrowserRequest,
 } from '../lib/session';
 import { env } from '../lib/env';
 
@@ -288,7 +293,8 @@ export async function authRoutes(app: FastifyInstance) {
 
   /**
    * POST /api/auth/refresh
-   * Refresh access token using refresh token (with rotation)
+   * Refresh access token using refresh token (with rotation and reuse detection)
+   * Supports both cookie-based (web) and body-based (extension) refresh tokens
    */
   app.post('/api/auth/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
     const deviceInfo = getDeviceInfo(request);
@@ -311,44 +317,66 @@ export async function authRoutes(app: FastifyInstance) {
       });
     }
 
-    const parseResult = refreshRequestSchema.safeParse(request.body);
-    if (!parseResult.success) {
+    // Extract refresh token from body or cookies
+    const refreshToken = extractRefreshToken(request);
+    if (!refreshToken) {
       return reply.status(400).send({
         error: 'invalid_request',
         errorDescription: 'Refresh token required',
       });
     }
 
-    const { refreshToken } = parseResult.data;
-    const tokens = await refreshTokens(app, refreshToken, deviceInfo);
+    const result = await refreshTokens(app, refreshToken, deviceInfo);
 
-    if (!tokens) {
+    if (!result.success) {
+      // Clear cookies on failure for web clients
+      if (isWebBrowserRequest(request)) {
+        clearAuthCookies(reply);
+      }
+
+      // Handle different error types
+      if (result.error === 'token_reuse_detected') {
+        // Security alert: potential token theft detected
+        // Return a specific error so the client knows to force re-authentication
+        return reply.status(401).send({
+          error: 'token_reuse_detected',
+          errorDescription: 'Security alert: This refresh token was already used. Your session has been revoked for security. Please sign in again.',
+          sessionsRevoked: result.sessionsRevoked,
+        });
+      }
+
       return reply.status(401).send({
         error: 'invalid_grant',
         errorDescription: 'Invalid or expired refresh token',
       });
     }
 
+    // Set cookies for web clients
+    if (isWebBrowserRequest(request)) {
+      setAuthCookies(reply, {
+        accessToken: result.tokens!.accessToken,
+        refreshToken: result.tokens!.refreshToken,
+      });
+    }
+
     return reply.status(200).send({
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      accessToken: result.tokens!.accessToken,
+      refreshToken: result.tokens!.refreshToken,
       tokenType: 'Bearer',
-      expiresIn: tokens.expiresIn,
+      expiresIn: result.tokens!.expiresIn,
     });
   });
 
   /**
    * POST /api/auth/logout
    * Logout and invalidate current session
+   * Supports both cookie-based (web) and header-based (extension) tokens
    */
   app.post('/api/auth/logout', async (request: FastifyRequest, reply: FastifyReply) => {
-    // Try to get refresh token to revoke session
-    const parseResult = refreshRequestSchema.safeParse(request.body);
+    // Extract access token from header or cookies
+    const accessToken = extractAccessToken(request);
 
-    // Also try to blacklist access token if provided
-    const authHeader = request.headers.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-      const accessToken = authHeader.slice(7);
+    if (accessToken) {
       const payload = await verifyAccessToken(app, accessToken);
 
       if (payload?.sessionId) {
@@ -364,6 +392,9 @@ export async function authRoutes(app: FastifyInstance) {
       }
     }
 
+    // Always clear cookies for web clients
+    clearAuthCookies(reply);
+
     return reply.status(200).send({
       success: true,
       message: 'Logged out successfully',
@@ -373,17 +404,18 @@ export async function authRoutes(app: FastifyInstance) {
   /**
    * POST /api/auth/logout-all
    * Logout from all devices
+   * Supports both cookie-based (web) and header-based (extension) tokens
    */
   app.post('/api/auth/logout-all', async (request: FastifyRequest, reply: FastifyReply) => {
-    const authHeader = request.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+    const accessToken = extractAccessToken(request);
+
+    if (!accessToken) {
       return reply.status(401).send({
         error: 'unauthorized',
         errorDescription: 'Access token required',
       });
     }
 
-    const accessToken = authHeader.slice(7);
     const payload = await verifyAccessToken(app, accessToken);
 
     if (!payload) {
@@ -403,6 +435,9 @@ export async function authRoutes(app: FastifyInstance) {
       await blacklistAccessToken(accessToken, remainingSeconds);
     }
 
+    // Clear cookies for web clients
+    clearAuthCookies(reply);
+
     return reply.status(200).send({
       success: true,
       message: `Logged out from ${count} device(s)`,
@@ -413,18 +448,18 @@ export async function authRoutes(app: FastifyInstance) {
   /**
    * GET /api/auth/me
    * Get current user info from access token
+   * Supports both cookie-based (web) and header-based (extension) tokens
    */
   app.get('/api/auth/me', async (request: FastifyRequest, reply: FastifyReply) => {
-    const authHeader = request.headers.authorization;
+    const token = extractAccessToken(request);
 
-    if (!authHeader?.startsWith('Bearer ')) {
+    if (!token) {
       return reply.status(401).send({
         error: 'unauthorized',
         errorDescription: 'Access token required',
       });
     }
 
-    const token = authHeader.slice(7);
     const payload = await verifyAccessToken(app, token);
 
     if (!payload) {
@@ -457,18 +492,18 @@ export async function authRoutes(app: FastifyInstance) {
   /**
    * GET /api/auth/sessions
    * Get all active sessions for current user
+   * Supports both cookie-based (web) and header-based (extension) tokens
    */
   app.get('/api/auth/sessions', async (request: FastifyRequest, reply: FastifyReply) => {
-    const authHeader = request.headers.authorization;
+    const token = extractAccessToken(request);
 
-    if (!authHeader?.startsWith('Bearer ')) {
+    if (!token) {
       return reply.status(401).send({
         error: 'unauthorized',
         errorDescription: 'Access token required',
       });
     }
 
-    const token = authHeader.slice(7);
     const payload = await verifyAccessToken(app, token);
 
     if (!payload) {
@@ -488,18 +523,18 @@ export async function authRoutes(app: FastifyInstance) {
   /**
    * DELETE /api/auth/sessions/:sessionId
    * Revoke a specific session
+   * Supports both cookie-based (web) and header-based (extension) tokens
    */
   app.delete('/api/auth/sessions/:sessionId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const authHeader = request.headers.authorization;
+    const token = extractAccessToken(request);
 
-    if (!authHeader?.startsWith('Bearer ')) {
+    if (!token) {
       return reply.status(401).send({
         error: 'unauthorized',
         errorDescription: 'Access token required',
       });
     }
 
-    const token = authHeader.slice(7);
     const payload = await verifyAccessToken(app, token);
 
     if (!payload) {

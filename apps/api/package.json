@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@reporivals/shared": "workspace:*",
+    "@fastify/cookie": "^9.2.0",
     "@fastify/cors": "^8.5.0",
     "minimatch": "^9.0.3",
     "@fastify/helmet": "^11.1.1",

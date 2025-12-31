@@ -42,6 +42,11 @@ export const sessions = pgTable('sessions', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(),
+  // Previous token hash for reuse detection - if someone tries to use this, it means
+  // the current token was stolen and we should revoke the entire session
+  previousTokenHash: varchar('previous_token_hash', { length: 64 }),
+  // Token family ID to track token chains for reuse detection across rotations
+  tokenFamily: uuid('token_family').notNull().defaultRandom(),
   deviceName: varchar('device_name', { length: 255 }),
   deviceType: varchar('device_type', { length: 50 }), // 'vscode', 'web', 'mobile'
   ipAddress: varchar('ip_address', { length: 45 }),

@@ -536,6 +536,29 @@ async function syncSchema() {
     `);
     console.info('✅ Created tables');
 
+    // Add new columns for session management (refresh token reuse detection)
+    await pool.query(`
+      -- Add previous_token_hash for refresh token reuse detection
+      ALTER TABLE sessions
+      ADD COLUMN IF NOT EXISTS previous_token_hash varchar(64);
+
+      -- Add token_family for tracking token chains
+      ALTER TABLE sessions
+      ADD COLUMN IF NOT EXISTS token_family uuid DEFAULT gen_random_uuid();
+
+      -- Update existing rows to have a token_family
+      UPDATE sessions SET token_family = gen_random_uuid() WHERE token_family IS NULL;
+
+      -- Make token_family NOT NULL after populating existing rows
+      ALTER TABLE sessions
+      ALTER COLUMN token_family SET NOT NULL;
+
+      -- Add index for reuse detection lookup
+      CREATE INDEX IF NOT EXISTS sessions_previous_token_hash_idx ON sessions(previous_token_hash);
+      CREATE INDEX IF NOT EXISTS sessions_token_family_idx ON sessions(token_family);
+    `);
+    console.info('✅ Added session management columns for reuse detection');
+
     console.info('🎉 Schema sync completed successfully!');
   } catch (error) {
     console.error('❌ Schema sync failed:', error);
