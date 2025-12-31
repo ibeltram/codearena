@@ -7,6 +7,7 @@ import { challengeRoutes } from './challenges';
 import { matchRoutes } from './matches';
 import { matchEventRoutes } from './match-events';
 import { creditRoutes } from './credits';
+import { paymentRoutes } from './payments';
 import { submissionRoutes } from './submissions';
 import { storageRoutes } from './storage';
 import { adminRoutes } from './admin';
@@ -36,6 +37,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Credit API routes
   await app.register(creditRoutes);
+
+  // Payment API routes (Stripe checkout)
+  await app.register(paymentRoutes);
 
   // Submission upload routes
   await app.register(submissionRoutes);
