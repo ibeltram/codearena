@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 
 import { healthRoutes } from './health';
 import { authRoutes } from './auth';
+import { authGitHubRoutes } from './auth-github';
 import { challengeRoutes } from './challenges';
 import { matchRoutes } from './matches';
 import { matchEventRoutes } from './match-events';
@@ -19,6 +20,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Auth routes (device code flow, token refresh, etc.)
   await app.register(authRoutes);
+
+  // GitHub OAuth routes
+  await app.register(authGitHubRoutes);
 
   // Public API routes
   await app.register(challengeRoutes);

@@ -7,6 +7,13 @@ export interface User {
   displayName: string;
   avatarUrl: string | null;
   role: 'user' | 'admin' | 'moderator';
+  githubUsername?: string;
+}
+
+export interface OAuthAccount {
+  provider: 'github' | 'google';
+  connected: boolean;
+  username?: string;
 }
 
 interface AuthState {
@@ -14,11 +21,13 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   accessToken: string | null;
+  oauthAccounts: OAuthAccount[];
 
   // Actions
   setUser: (user: User | null) => void;
   setAccessToken: (token: string | null) => void;
   setLoading: (loading: boolean) => void;
+  setOAuthAccounts: (accounts: OAuthAccount[]) => void;
   logout: () => void;
 }
 
@@ -29,6 +38,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
       accessToken: null,
+      oauthAccounts: [],
 
       setUser: (user) =>
         set({
@@ -43,19 +53,29 @@ export const useAuthStore = create<AuthState>()(
       setLoading: (isLoading) =>
         set({ isLoading }),
 
-      logout: () =>
+      setOAuthAccounts: (oauthAccounts) =>
+        set({ oauthAccounts }),
+
+      logout: () => {
+        // Clear refresh token from localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('codearena-refresh-token');
+        }
         set({
           user: null,
           isAuthenticated: false,
           accessToken: null,
+          oauthAccounts: [],
           isLoading: false,
-        }),
+        });
+      },
     }),
     {
       name: 'codearena-auth',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         accessToken: state.accessToken,
+        user: state.user,
       }),
     }
   )
