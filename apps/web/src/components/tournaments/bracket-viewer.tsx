@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useEffect, useCallback } from 'react';
 import { User, Trophy, Clock, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,12 +13,20 @@ import {
   BracketMatchStatus,
 } from '@/types/tournament';
 
+// Constants for bracket layout
+const MATCH_WIDTH = 200;
+const MATCH_HEIGHT = 80;
+const ROUND_GAP = 80;
+const MATCH_GAP_BASE = 20;
+const CONNECTOR_WIDTH = 40;
+
 interface BracketViewerProps {
   format: TournamentFormat;
   rounds: Record<number, BracketMatch[]>;
   participants: Record<string, BracketParticipantInfo>;
   totalRounds: number;
   onMatchClick?: (match: BracketMatch) => void;
+  autoScrollToActive?: boolean;
 }
 
 interface MatchNodeProps {
@@ -147,19 +155,136 @@ function MatchNode({ match, participants, onClick, roundName }: MatchNodeProps) 
   );
 }
 
+/**
+ * SVG Connector component for drawing lines between matches
+ */
+function BracketConnector({
+  fromY,
+  toY,
+  roundIndex,
+  matchesInRound,
+  isLast,
+}: {
+  fromY: number;
+  toY: number;
+  roundIndex: number;
+  matchesInRound: number;
+  isLast: boolean;
+}) {
+  if (isLast) return null;
+
+  const midX = CONNECTOR_WIDTH / 2;
+
+  return (
+    <svg
+      className="absolute pointer-events-none"
+      style={{
+        left: MATCH_WIDTH,
+        width: CONNECTOR_WIDTH,
+        height: '100%',
+        top: 0,
+      }}
+    >
+      {/* Draw horizontal line from match to middle */}
+      <line
+        x1={0}
+        y1={fromY + MATCH_HEIGHT / 2}
+        x2={midX}
+        y2={fromY + MATCH_HEIGHT / 2}
+        stroke="currentColor"
+        strokeWidth={2}
+        className="text-border"
+      />
+      {/* Draw vertical line connecting two matches to one */}
+      <line
+        x1={midX}
+        y1={fromY + MATCH_HEIGHT / 2}
+        x2={midX}
+        y2={toY + MATCH_HEIGHT / 2}
+        stroke="currentColor"
+        strokeWidth={2}
+        className="text-border"
+      />
+      {/* Draw horizontal line from middle to next round */}
+      <line
+        x1={midX}
+        y1={(fromY + toY) / 2 + MATCH_HEIGHT / 2}
+        x2={CONNECTOR_WIDTH}
+        y2={(fromY + toY) / 2 + MATCH_HEIGHT / 2}
+        stroke="currentColor"
+        strokeWidth={2}
+        className="text-border"
+      />
+    </svg>
+  );
+}
+
 export function BracketViewer({
   format,
   rounds,
   participants,
   totalRounds,
   onMatchClick,
+  autoScrollToActive = true,
 }: BracketViewerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const activeMatchRef = useRef<HTMLDivElement>(null);
+
   // Organize matches by round
   const roundNumbers = useMemo(() => {
     return Object.keys(rounds)
       .map(Number)
       .sort((a, b) => a - b);
   }, [rounds]);
+
+  // Find the current active round (first round with in_progress or pending matches)
+  const activeRound = useMemo(() => {
+    for (const roundNum of roundNumbers) {
+      const roundMatches = rounds[roundNum] || [];
+      const hasActive = roundMatches.some(
+        (m) => m.status === 'in_progress' || m.status === 'pending'
+      );
+      if (hasActive) return roundNum;
+    }
+    return roundNumbers[roundNumbers.length - 1]; // Default to last round
+  }, [rounds, roundNumbers]);
+
+  // Auto-scroll to active round
+  useEffect(() => {
+    if (autoScrollToActive && activeMatchRef.current && containerRef.current) {
+      const container = containerRef.current;
+      const activeElement = activeMatchRef.current;
+
+      // Calculate scroll position to center the active round
+      const containerWidth = container.clientWidth;
+      const elementLeft = activeElement.offsetLeft;
+      const elementWidth = activeElement.clientWidth;
+      const scrollTo = elementLeft - containerWidth / 2 + elementWidth / 2;
+
+      container.scrollTo({
+        left: Math.max(0, scrollTo),
+        behavior: 'smooth',
+      });
+    }
+  }, [autoScrollToActive, activeRound]);
+
+  // Calculate match positions for SVG connectors
+  const getMatchYPositions = useCallback(
+    (roundNum: number, matchCount: number) => {
+      const positions: number[] = [];
+      const totalHeight =
+        matchCount * MATCH_HEIGHT + (matchCount - 1) * MATCH_GAP_BASE * Math.pow(2, roundNum - 1);
+      const gapBetweenMatches = MATCH_GAP_BASE * Math.pow(2, roundNum - 1);
+
+      let currentY = 0;
+      for (let i = 0; i < matchCount; i++) {
+        positions.push(currentY);
+        currentY += MATCH_HEIGHT + gapBetweenMatches;
+      }
+      return positions;
+    },
+    []
+  );
 
   if (roundNumbers.length === 0) {
     return (
@@ -176,40 +301,142 @@ export function BracketViewer({
   }
 
   return (
-    <div className="overflow-x-auto pb-4">
-      <div className="inline-flex gap-8 min-w-max p-4">
-        {roundNumbers.map((roundNum) => {
+    <div ref={containerRef} className="overflow-x-auto pb-4 scroll-smooth">
+      <div className="inline-flex min-w-max p-4" style={{ gap: ROUND_GAP }}>
+        {roundNumbers.map((roundNum, roundIndex) => {
           const roundMatches = rounds[roundNum] || [];
           const roundName = getRoundName(roundNum, totalRounds);
+          const isActiveRound = roundNum === activeRound;
+          const isLastRound = roundIndex === roundNumbers.length - 1;
+          const matchYPositions = getMatchYPositions(roundNum, roundMatches.length);
 
           return (
-            <div key={roundNum} className="flex flex-col">
+            <div
+              key={roundNum}
+              ref={isActiveRound ? activeMatchRef : undefined}
+              className="flex flex-col relative"
+              style={{ width: MATCH_WIDTH + (isLastRound ? 0 : CONNECTOR_WIDTH) }}
+            >
               {/* Round header */}
               <div className="text-center mb-4">
-                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                <h3
+                  className={cn(
+                    'font-semibold text-sm uppercase tracking-wide',
+                    isActiveRound ? 'text-primary' : 'text-muted-foreground'
+                  )}
+                >
                   {roundName}
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   {roundMatches.length} match{roundMatches.length !== 1 ? 'es' : ''}
                 </p>
+                {isActiveRound && (
+                  <div className="mt-1">
+                    <Badge variant="secondary" className="text-xs">
+                      Current Round
+                    </Badge>
+                  </div>
+                )}
               </div>
 
-              {/* Matches in this round */}
-              <div
-                className="flex flex-col justify-around flex-1"
-                style={{
-                  gap: `${Math.pow(2, roundNum - 1) * 2}rem`,
-                }}
-              >
-                {roundMatches.map((match) => (
-                  <MatchNode
-                    key={match.id}
-                    match={match}
-                    participants={participants}
-                    onClick={() => onMatchClick?.(match)}
-                    roundName={roundName}
-                  />
-                ))}
+              {/* Matches in this round with connectors */}
+              <div className="flex flex-col relative" style={{ width: MATCH_WIDTH }}>
+                {roundMatches.map((match, matchIndex) => {
+                  const isLive = match.status === 'in_progress';
+                  const matchY = matchYPositions[matchIndex];
+                  const isEven = matchIndex % 2 === 0;
+
+                  return (
+                    <div
+                      key={match.id}
+                      className="relative"
+                      style={{
+                        marginTop:
+                          matchIndex === 0
+                            ? 0
+                            : MATCH_GAP_BASE * Math.pow(2, roundNum - 1),
+                      }}
+                    >
+                      <MatchNode
+                        match={match}
+                        participants={participants}
+                        onClick={() => onMatchClick?.(match)}
+                        roundName={roundName}
+                      />
+                    </div>
+                  );
+                })}
+
+                {/* SVG Connectors to next round */}
+                {!isLastRound && roundMatches.length > 1 && (
+                  <svg
+                    className="absolute pointer-events-none text-border"
+                    style={{
+                      left: MATCH_WIDTH,
+                      top: 0,
+                      width: CONNECTOR_WIDTH + ROUND_GAP,
+                      height: '100%',
+                    }}
+                  >
+                    {roundMatches.map((match, idx) => {
+                      if (idx % 2 !== 0) return null; // Only draw from even indices
+
+                      const y1 = matchYPositions[idx] + MATCH_HEIGHT / 2;
+                      const y2 =
+                        idx + 1 < roundMatches.length
+                          ? matchYPositions[idx + 1] + MATCH_HEIGHT / 2
+                          : y1;
+                      const midY = (y1 + y2) / 2;
+                      const nextRoundY =
+                        (matchYPositions[Math.floor(idx / 2)] || 0) + MATCH_HEIGHT / 2;
+
+                      return (
+                        <g key={match.id}>
+                          {/* Horizontal line from top match */}
+                          <line
+                            x1={0}
+                            y1={y1}
+                            x2={20}
+                            y2={y1}
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          />
+                          {/* Horizontal line from bottom match */}
+                          {idx + 1 < roundMatches.length && (
+                            <line
+                              x1={0}
+                              y1={y2}
+                              x2={20}
+                              y2={y2}
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            />
+                          )}
+                          {/* Vertical connector */}
+                          {idx + 1 < roundMatches.length && (
+                            <line
+                              x1={20}
+                              y1={y1}
+                              x2={20}
+                              y2={y2}
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            />
+                          )}
+                          {/* Horizontal line to next round */}
+                          <line
+                            x1={20}
+                            y1={midY}
+                            x2={CONNECTOR_WIDTH + ROUND_GAP}
+                            y2={midY}
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          />
+                        </g>
+                      );
+                    })}
+                  </svg>
+                )}
               </div>
             </div>
           );
