@@ -312,17 +312,68 @@ function registerCommands(context: vscode.ExtensionContext): void {
       const response = await fetch(`${config.apiUrl}/api/challenges`, { headers });
 
       if (response.ok) {
-        const data = await response.json();
-        challengesProvider.setChallenges(data.challenges || []);
+        const data = (await response.json()) as { challenges?: any[] };
+        // Map API response to Challenge type
+        const challenges = (data.challenges || []).map((c: any) => ({
+          id: c.id,
+          slug: c.slug,
+          title: c.title,
+          description: c.description || '',
+          category: c.category,
+          difficulty: c.difficulty,
+          timeLimit: c.timeLimit || c.time_limit || 60,
+          stakeAmount: c.stakeAmount || c.stake_amount || 100,
+          hasTemplate: c.hasTemplate || c.has_template || false,
+          isPublished: c.isPublished ?? c.is_published ?? true,
+        }));
+        challengesProvider.setChallenges(challenges);
       } else {
-        challengesProvider.setChallenges([]);
+        challengesProvider.setError('Failed to load challenges');
       }
     } catch (error) {
       console.error('Failed to fetch challenges:', error);
-      challengesProvider.setChallenges([]);
+      challengesProvider.setError('Network error - check connection');
     } finally {
       challengesProvider.setLoading(false);
     }
+  });
+
+  // Filter Challenges by Category
+  const filterChallenges = vscode.commands.registerCommand('codearena.filterChallenges', async () => {
+    const currentFilter = challengesProvider.getCategoryFilter();
+    const categories = [
+      { label: '$(list-flat) All Categories', category: null, picked: currentFilter === null },
+      { label: '$(browser) Frontend', category: 'frontend' as const, picked: currentFilter === 'frontend' },
+      { label: '$(server) Backend', category: 'backend' as const, picked: currentFilter === 'backend' },
+      { label: '$(layers) Full Stack', category: 'fullstack' as const, picked: currentFilter === 'fullstack' },
+      { label: '$(symbol-method) Algorithm', category: 'algorithm' as const, picked: currentFilter === 'algorithm' },
+      { label: '$(cloud) DevOps', category: 'devops' as const, picked: currentFilter === 'devops' },
+    ];
+
+    const selection = await vscode.window.showQuickPick(categories, {
+      title: 'Filter Challenges by Category',
+      placeHolder: currentFilter ? `Currently: ${currentFilter}` : 'Select a category to filter',
+    });
+
+    if (selection !== undefined) {
+      challengesProvider.setCategoryFilter(selection.category);
+    }
+  });
+
+  // Open Challenge in Web
+  const openChallengeInWeb = vscode.commands.registerCommand(
+    'codearena.openChallengeInWeb',
+    (challenge: Challenge) => {
+      const config = getConfig();
+      vscode.env.openExternal(
+        vscode.Uri.parse(`${config.webUrl}/challenges/${challenge.slug}`)
+      );
+    }
+  );
+
+  // Toggle Challenge Grouping
+  const toggleGrouping = vscode.commands.registerCommand('codearena.toggleGrouping', () => {
+    challengesProvider.toggleGroupByCategory();
   });
 
   context.subscriptions.push(
@@ -337,7 +388,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
     openMatchInWeb,
     viewMatchDetails,
     focusMatchView,
-    refreshChallenges
+    refreshChallenges,
+    filterChallenges,
+    openChallengeInWeb,
+    toggleGrouping
   );
 }
 

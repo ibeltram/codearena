@@ -52,6 +52,20 @@
       {
         "command": "codearena.openMatchInWeb",
         "title": "CodeArena: Open Match in Web"
+      },
+      {
+        "command": "codearena.filterChallenges",
+        "title": "CodeArena: Filter by Category",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "codearena.openChallengeInWeb",
+        "title": "Open in Web"
+      },
+      {
+        "command": "codearena.toggleGrouping",
+        "title": "Toggle Grouping",
+        "icon": "$(list-tree)"
       }
     ],
     "viewsContainers": {
@@ -146,14 +160,24 @@
     "menus": {
       "view/title": [
         {
+          "command": "codearena.filterChallenges",
+          "when": "view == codearena-challenges",
+          "group": "navigation@1"
+        },
+        {
           "command": "codearena.refreshChallenges",
           "when": "view == codearena-challenges",
-          "group": "navigation"
+          "group": "navigation@2"
+        },
+        {
+          "command": "codearena.toggleGrouping",
+          "when": "view == codearena-challenges",
+          "group": "navigation@3"
         },
         {
           "command": "codearena.signIn",
           "when": "view == codearena-challenges && !codearena.isAuthenticated",
-          "group": "navigation"
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -161,6 +185,16 @@
           "command": "codearena.joinMatch",
           "when": "view == codearena-challenges && viewItem == challenge",
           "group": "inline"
+        },
+        {
+          "command": "codearena.openChallengeInWeb",
+          "when": "view == codearena-challenges && viewItem == challenge",
+          "group": "1_actions"
+        },
+        {
+          "command": "codearena.joinMatch",
+          "when": "view == codearena-challenges && viewItem == challenge",
+          "group": "1_actions"
         }
       ],
       "commandPalette": [
@@ -175,6 +209,10 @@
         {
           "command": "codearena.openMatchInWeb",
           "when": "codearena.hasActiveMatch"
+        },
+        {
+          "command": "codearena.openChallengeInWeb",
+          "when": "false"
         }
       ]
     }

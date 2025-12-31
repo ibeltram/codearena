@@ -107,6 +107,7 @@ export class ChallengesProvider implements vscode.TreeDataProvider<vscode.TreeIt
   private isLoading = false;
   private error: string | null = null;
   private groupByCategory = true;
+  private categoryFilter: ChallengeCategory | null = null;
 
   constructor() {}
 
@@ -135,15 +136,34 @@ export class ChallengesProvider implements vscode.TreeDataProvider<vscode.TreeIt
     this.refresh();
   }
 
+  setCategoryFilter(category: ChallengeCategory | null): void {
+    this.categoryFilter = category;
+    this.refresh();
+  }
+
+  getCategoryFilter(): ChallengeCategory | null {
+    return this.categoryFilter;
+  }
+
+  getFilteredChallenges(): Challenge[] {
+    if (!this.categoryFilter) {
+      return this.challenges;
+    }
+    return this.challenges.filter((c) => c.category === this.categoryFilter);
+  }
+
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
 
   getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
     if (this.isLoading) {
-      return Promise.resolve([
-        new vscode.TreeItem('Loading challenges...', vscode.TreeItemCollapsibleState.None),
-      ]);
+      const loadingItem = new vscode.TreeItem(
+        'Loading challenges...',
+        vscode.TreeItemCollapsibleState.None
+      );
+      loadingItem.iconPath = new vscode.ThemeIcon('loading~spin');
+      return Promise.resolve([loadingItem]);
     }
 
     if (this.error) {
@@ -155,15 +175,30 @@ export class ChallengesProvider implements vscode.TreeDataProvider<vscode.TreeIt
       return Promise.resolve([errorItem]);
     }
 
+    const filteredChallenges = this.getFilteredChallenges();
+
     if (!element) {
       // Root level
-      if (this.challenges.length === 0) {
-        return Promise.resolve([
-          new vscode.TreeItem('No challenges available', vscode.TreeItemCollapsibleState.None),
-        ]);
+      if (filteredChallenges.length === 0) {
+        const emptyItem = new vscode.TreeItem(
+          this.categoryFilter
+            ? `No ${CategoryItem.formatCategory(this.categoryFilter)} challenges`
+            : 'No challenges available',
+          vscode.TreeItemCollapsibleState.None
+        );
+        emptyItem.iconPath = new vscode.ThemeIcon('info');
+        return Promise.resolve([emptyItem]);
       }
 
-      if (this.groupByCategory) {
+      // When filtering by category, show flat list regardless of groupByCategory setting
+      if (this.categoryFilter || !this.groupByCategory) {
+        // Flat list
+        return Promise.resolve(
+          filteredChallenges.map(
+            (challenge) => new ChallengeItem(challenge, vscode.TreeItemCollapsibleState.None)
+          )
+        );
+      } else {
         // Group by category
         const categories = this.getCategoriesWithCounts();
         return Promise.resolve(
@@ -172,19 +207,12 @@ export class ChallengesProvider implements vscode.TreeDataProvider<vscode.TreeIt
               new CategoryItem(category, count, vscode.TreeItemCollapsibleState.Collapsed)
           )
         );
-      } else {
-        // Flat list
-        return Promise.resolve(
-          this.challenges.map(
-            (challenge) => new ChallengeItem(challenge, vscode.TreeItemCollapsibleState.None)
-          )
-        );
       }
     }
 
     // Child level (challenges under a category)
     if (element instanceof CategoryItem) {
-      const challengesInCategory = this.challenges.filter(
+      const challengesInCategory = filteredChallenges.filter(
         (c) => c.category === element.category
       );
       return Promise.resolve(
