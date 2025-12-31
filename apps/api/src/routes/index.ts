@@ -8,6 +8,7 @@ import { matchRoutes } from './matches';
 import { matchEventRoutes } from './match-events';
 import { creditRoutes } from './credits';
 import { submissionRoutes } from './submissions';
+import { storageRoutes } from './storage';
 import { adminRoutes } from './admin';
 import { initializeMatchEvents } from '../lib/match-events';
 
@@ -38,6 +39,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Submission upload routes
   await app.register(submissionRoutes);
+
+  // Storage API routes (file uploads, downloads, presigned URLs)
+  await app.register(storageRoutes);
 
   // Admin API routes (TODO: add auth middleware)
   await app.register(adminRoutes);
