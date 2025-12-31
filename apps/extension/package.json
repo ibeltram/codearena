@@ -212,11 +212,11 @@
       "commandPalette": [
         {
           "command": "codearena.submit",
-          "when": "codearena.hasActiveMatch"
+          "when": "codearena.hasActiveMatch && !codearena.isSubmissionLocked"
         },
         {
           "command": "codearena.lockSubmission",
-          "when": "codearena.hasActiveMatch && codearena.hasSubmitted"
+          "when": "codearena.hasActiveMatch && codearena.hasSubmitted && !codearena.isSubmissionLocked"
         },
         {
           "command": "codearena.openMatchInWeb",

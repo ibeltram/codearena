@@ -173,6 +173,76 @@ export class MatchService {
   }
 
   /**
+   * Lock submission - makes it immutable and prevents further submissions
+   * Returns the locked submission with timestamp, or null on failure
+   */
+  async lockSubmission(matchId: string): Promise<{ lockedAt: string } | null> {
+    const token = await this.getAccessToken();
+    if (!token) {
+      return null;
+    }
+
+    const config = this.getConfig();
+
+    try {
+      const response = await fetch(`${config.apiUrl}/api/matches/${matchId}/submissions/lock`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = (await response.json().catch(() => ({ message: 'Lock failed' }))) as { message?: string; code?: string };
+
+        // Handle specific error cases
+        if (error.code === 'ALREADY_LOCKED') {
+          throw new Error('Submission is already locked');
+        } else if (error.code === 'NO_SUBMISSION') {
+          throw new Error('No submission found to lock');
+        } else if (error.code === 'MATCH_NOT_IN_PROGRESS') {
+          throw new Error('Match is not in progress');
+        }
+
+        throw new Error(error.message || `HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as { lockedAt: string; submission?: any };
+
+      // Update the current match with the locked submission
+      if (this.currentMatch && data.lockedAt) {
+        this.currentMatch = {
+          ...this.currentMatch,
+          mySubmission: this.currentMatch.mySubmission
+            ? { ...this.currentMatch.mySubmission, lockedAt: data.lockedAt }
+            : null,
+        };
+        this._onMatchUpdate.fire(this.currentMatch);
+      }
+
+      return { lockedAt: data.lockedAt };
+    } catch (error) {
+      console.error('Failed to lock submission:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if the current match submission is locked
+   */
+  isSubmissionLocked(): boolean {
+    return !!this.currentMatch?.mySubmission?.lockedAt;
+  }
+
+  /**
+   * Get the lock timestamp if submission is locked
+   */
+  getSubmissionLockedAt(): string | null {
+    return this.currentMatch?.mySubmission?.lockedAt || null;
+  }
+
+  /**
    * Connect to match events using Server-Sent Events
    */
   private async connectToMatchEvents(matchId: string): Promise<void> {

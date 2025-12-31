@@ -236,6 +236,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
       return;
     }
 
+    // Check if submission is locked
+    if (match.mySubmission?.lockedAt) {
+      const lockedTime = new Date(match.mySubmission.lockedAt).toLocaleString();
+      vscode.window.showWarningMessage(
+        `CodeArena: Your submission was locked at ${lockedTime}. You cannot submit again.`
+      );
+      return;
+    }
+
     // Get workspace folder
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -276,7 +285,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       currentSummary = await submissionService.scanWorkspace(targetFolder.uri.fsPath);
 
       // Show the submission panel with file preview
-      const panel = SubmissionPanel.createOrShow(
+      SubmissionPanel.createOrShow(
         context.extensionUri,
         match.id,
         currentSummary,
@@ -336,25 +345,79 @@ function registerCommands(context: vscode.ExtensionContext): void {
   // Lock Submission
   const lockSubmission = vscode.commands.registerCommand('codearena.lockSubmission', async () => {
     const match = matchProvider.getMatch();
-    if (!match?.mySubmission) {
+
+    // Check if there's an active match
+    if (!match) {
+      vscode.window.showWarningMessage('CodeArena: No active match.');
+      return;
+    }
+
+    // Check if match is in progress
+    if (match.status !== 'in_progress') {
+      vscode.window.showWarningMessage('CodeArena: Match is not in progress.');
+      return;
+    }
+
+    // Check if there's a submission to lock
+    if (!match.mySubmission) {
       vscode.window.showWarningMessage('CodeArena: You need to submit first before locking.');
       return;
     }
 
+    // Check if already locked
     if (match.mySubmission.lockedAt) {
-      vscode.window.showInformationMessage('CodeArena: Your submission is already locked.');
+      const lockedTime = new Date(match.mySubmission.lockedAt).toLocaleString();
+      vscode.window.showInformationMessage(`CodeArena: Your submission was locked at ${lockedTime}.`);
       return;
     }
 
+    // Show confirmation dialog with strong warning
     const confirm = await vscode.window.showWarningMessage(
-      'Are you sure you want to lock your submission?\n\nThis action cannot be undone. You will not be able to submit again after locking.',
+      '⚠️ Lock Submission?\n\n' +
+        'This action is PERMANENT and cannot be undone.\n\n' +
+        '• You will NOT be able to submit again\n' +
+        '• Your current submission will be final\n' +
+        '• This signals you are done coding\n\n' +
+        'Are you sure you want to lock your submission?',
       { modal: true },
-      'Lock Submission'
+      'Lock Submission',
+      'Cancel'
     );
 
     if (confirm === 'Lock Submission') {
-      // TODO: Call API to lock submission
-      vscode.window.showInformationMessage('CodeArena: Locking submission... (not yet implemented)');
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'CodeArena: Locking submission...',
+            cancellable: false,
+          },
+          async () => {
+            const result = await matchService.lockSubmission(match.id);
+
+            if (result?.lockedAt) {
+              const lockedTime = new Date(result.lockedAt).toLocaleString();
+
+              // Update context to disable submit command
+              await vscode.commands.executeCommand('setContext', 'codearena.isSubmissionLocked', true);
+
+              // Update the active match panel if open
+              if (ActiveMatchPanel.currentPanel) {
+                const updatedMatch = matchService.getCurrentMatch();
+                ActiveMatchPanel.currentPanel.setMatch(updatedMatch);
+              }
+
+              vscode.window.showInformationMessage(
+                `CodeArena: Submission locked at ${lockedTime}. Good luck! 🔒`
+              );
+            }
+          }
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `CodeArena: Failed to lock submission: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      }
     }
   });
 
@@ -547,6 +610,7 @@ async function setupContext(): Promise<void> {
   await vscode.commands.executeCommand('setContext', 'codearena.isAuthenticated', isAuthenticated);
   await vscode.commands.executeCommand('setContext', 'codearena.hasActiveMatch', false);
   await vscode.commands.executeCommand('setContext', 'codearena.hasSubmitted', false);
+  await vscode.commands.executeCommand('setContext', 'codearena.isSubmissionLocked', false);
 }
 
 /**
@@ -590,6 +654,11 @@ export function activate(context: vscode.ExtensionContext) {
       'setContext',
       'codearena.hasSubmitted',
       !!match?.mySubmission
+    );
+    vscode.commands.executeCommand(
+      'setContext',
+      'codearena.isSubmissionLocked',
+      !!match?.mySubmission?.lockedAt
     );
   });
 
