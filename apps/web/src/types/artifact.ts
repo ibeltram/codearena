@@ -34,9 +34,13 @@ export interface Artifact {
   storageKey: string;
   sizeBytes: number;
   createdAt: string;
-  secretScanStatus: 'pending' | 'clean' | 'flagged';
+  secretScanStatus: 'pending' | 'clean' | 'flagged' | 'acknowledged';
   manifestJson: ArtifactManifest;
   isPublicBlocked: boolean;
+  isOwner?: boolean;
+  scannedAt?: string | null;
+  findingsCount?: number;
+  acknowledgedAt?: string | null;
 }
 
 export interface FileTreeNode {

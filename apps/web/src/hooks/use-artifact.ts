@@ -114,6 +114,73 @@ export function useScanArtifact() {
     },
     onSuccess: (_, artifactId) => {
       queryClient.invalidateQueries({ queryKey: ['artifact', artifactId] });
+      queryClient.invalidateQueries({ queryKey: ['artifact-findings', artifactId] });
+    },
+  });
+}
+
+// Secret finding type
+export interface SecretFinding {
+  id: string;
+  filePath: string;
+  lineNumber: number | null;
+  secretType: string;
+  severity: 'high' | 'medium' | 'low';
+  description: string;
+  evidence: string | null;
+}
+
+// Findings response type
+export interface ArtifactFindingsResponse {
+  artifactId: string;
+  status: string;
+  scannedAt: string | null;
+  findings: SecretFinding[];
+  isAcknowledged: boolean;
+  acknowledgedAt: string | null;
+  acknowledgmentNote: string | null;
+}
+
+// Fetch secret findings for an artifact
+export function useArtifactFindings(artifactId: string | undefined) {
+  return useQuery({
+    queryKey: ['artifact-findings', artifactId],
+    queryFn: async () => {
+      if (!artifactId) throw new Error('Artifact ID required');
+      try {
+        const response = await api.get(`/artifacts/${artifactId}/findings`);
+        return response as ArtifactFindingsResponse;
+      } catch (error) {
+        // Return empty findings if API not available
+        console.warn('Artifact findings API not available:', error);
+        return {
+          artifactId,
+          status: 'pending',
+          scannedAt: null,
+          findings: [],
+          isAcknowledged: false,
+          acknowledgedAt: null,
+          acknowledgmentNote: null,
+        } as ArtifactFindingsResponse;
+      }
+    },
+    enabled: !!artifactId,
+    staleTime: 60 * 1000, // 1 minute
+  });
+}
+
+// Acknowledge secrets in an artifact
+export function useAcknowledgeSecrets() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ artifactId, note }: { artifactId: string; note?: string }) => {
+      const response = await api.post(`/artifacts/${artifactId}/acknowledge`, { note });
+      return response;
+    },
+    onSuccess: (_, { artifactId }) => {
+      queryClient.invalidateQueries({ queryKey: ['artifact', artifactId] });
+      queryClient.invalidateQueries({ queryKey: ['artifact-findings', artifactId] });
     },
   });
 }

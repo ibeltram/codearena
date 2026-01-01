@@ -18,12 +18,13 @@ import {
   buildFileTree,
   formatFileSize,
 } from '@/types/artifact';
-import { useArtifactFile } from '@/hooks/use-artifact';
+import { useArtifactFile, useArtifactFindings, useAcknowledgeSecrets } from '@/hooks/use-artifact';
 import { FileTree } from './file-tree';
 import { CodeViewer } from './code-viewer';
 import { MarkdownViewer } from './markdown-viewer';
 import { ImageViewer } from './image-viewer';
 import { Breadcrumb } from './breadcrumb';
+import { SecretScanAlert } from './secret-scan-alert';
 
 /**
  * Image file extensions that can be previewed
@@ -110,6 +111,7 @@ interface ArtifactViewerProps {
   error?: Error | null;
   onDownload?: () => void;
   className?: string;
+  isOwner?: boolean;
 }
 
 export function ArtifactViewer({
@@ -118,9 +120,14 @@ export function ArtifactViewer({
   error,
   onDownload,
   className,
+  isOwner = false,
 }: ArtifactViewerProps) {
   const [selectedPath, setSelectedPath] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Fetch secret findings for this artifact
+  const { data: findingsData } = useArtifactFindings(artifact?.id || '');
+  const { mutateAsync: acknowledgeSecrets } = useAcknowledgeSecrets();
 
   // Build file tree from manifest
   const fileTree = useMemo(() => {
@@ -212,8 +219,32 @@ export function ArtifactViewer({
     );
   }
 
+  // Handle acknowledgment
+  const handleAcknowledge = async (note: string) => {
+    if (!artifact?.id) return;
+    await acknowledgeSecrets({ artifactId: artifact.id, note });
+  };
+
+  // Show alert for flagged artifacts
+  const showSecretAlert = artifact?.secretScanStatus && artifact.secretScanStatus !== 'clean';
+
   return (
     <div className={cn('flex flex-col h-full bg-white dark:bg-gray-950', className)}>
+      {/* Secret scan alert */}
+      {showSecretAlert && (
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+          <SecretScanAlert
+            artifactId={artifact.id}
+            status={artifact.secretScanStatus as any}
+            findings={findingsData?.findings || []}
+            isOwner={isOwner}
+            scannedAt={artifact.scannedAt || null}
+            acknowledgedAt={artifact.acknowledgedAt || null}
+            onAcknowledge={isOwner ? handleAcknowledge : undefined}
+          />
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center gap-4">
@@ -232,9 +263,12 @@ export function ArtifactViewer({
 
           {/* Security status */}
           <Badge
-            variant={artifact.secretScanStatus === 'flagged' ? 'destructive' : 'secondary'}
+            variant={artifact.secretScanStatus === 'flagged' ? 'destructive' : artifact.secretScanStatus === 'acknowledged' ? 'outline' : 'secondary'}
+            className={artifact.secretScanStatus === 'acknowledged' ? 'text-orange-600 border-orange-600' : ''}
           >
-            {artifact.secretScanStatus === 'flagged' ? '⚠️ Secrets Detected' : '✓ Clean'}
+            {artifact.secretScanStatus === 'flagged' ? '⚠️ Secrets Detected' :
+             artifact.secretScanStatus === 'acknowledged' ? '🔐 Acknowledged' :
+             artifact.secretScanStatus === 'pending' ? '⏳ Scanning...' : '✓ Clean'}
           </Badge>
 
           {artifact.isPublicBlocked && (
@@ -249,7 +283,12 @@ export function ArtifactViewer({
           <Button variant="outline" size="sm" onClick={handleCopyLink}>
             📋 Copy Link
           </Button>
-          <Button variant="outline" size="sm" onClick={onDownload}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDownload}
+            disabled={artifact.secretScanStatus === 'flagged' && !isOwner}
+          >
             ⬇️ Download
           </Button>
         </div>

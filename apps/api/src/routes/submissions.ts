@@ -43,6 +43,7 @@ const {
   matchParticipants,
   submissions,
   artifacts,
+  secretFindings,
   challengeVersions,
   challenges,
   users,
@@ -1390,6 +1391,10 @@ export async function submissionRoutes(app: FastifyInstance) {
               secretScanStatus: { type: 'string' },
               manifestJson: { type: 'object' },
               isPublicBlocked: { type: 'boolean' },
+              isOwner: { type: 'boolean' },
+              scannedAt: { type: ['string', 'null'] },
+              findingsCount: { type: 'number' },
+              acknowledgedAt: { type: ['string', 'null'] },
             },
           },
         },
@@ -1397,6 +1402,14 @@ export async function submissionRoutes(app: FastifyInstance) {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const params = request.params as { id: string };
+
+      // Get user ID if authenticated (optional for this endpoint)
+      let userId: string | null = null;
+      try {
+        userId = request.headers['x-user-id'] as string || null;
+      } catch {
+        // Not authenticated, which is fine for public artifacts
+      }
 
       const [artifact] = await db
         .select()
@@ -1407,8 +1420,29 @@ export async function submissionRoutes(app: FastifyInstance) {
         throw new NotFoundError('Artifact', params.id);
       }
 
-      // Block public viewing if flagged
-      const isPublicBlocked = artifact.secretScanStatus === 'flagged';
+      // Check if user is the owner of this artifact
+      let isOwner = false;
+      if (userId) {
+        const [submission] = await db
+          .select()
+          .from(submissions)
+          .where(
+            and(
+              eq(submissions.artifactId, params.id),
+              eq(submissions.userId, userId)
+            )
+          );
+        isOwner = !!submission;
+      }
+
+      // Block public viewing if flagged (unless owner)
+      const isPublicBlocked = artifact.secretScanStatus === 'flagged' && !isOwner;
+
+      // Get findings count
+      const [findingsResult] = await db
+        .select({ count: count() })
+        .from(secretFindings)
+        .where(eq(secretFindings.artifactId, params.id));
 
       return {
         id: artifact.id,
@@ -1419,6 +1453,10 @@ export async function submissionRoutes(app: FastifyInstance) {
         secretScanStatus: artifact.secretScanStatus,
         manifestJson: artifact.manifestJson,
         isPublicBlocked,
+        isOwner,
+        scannedAt: artifact.scannedAt?.toISOString() || null,
+        findingsCount: Number(findingsResult?.count || 0),
+        acknowledgedAt: artifact.acknowledgedAt?.toISOString() || null,
       };
     }
   );
@@ -1728,8 +1766,26 @@ MIT
               artifactId: { type: 'string' },
               status: { type: 'string' },
               findingsCount: { type: 'number' },
+              findings: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    filePath: { type: 'string' },
+                    lineNumber: { type: ['number', 'null'] },
+                    secretType: { type: 'string' },
+                    severity: { type: 'string' },
+                    description: { type: 'string' },
+                    evidence: { type: ['string', 'null'] },
+                  },
+                },
+              },
               summary: { type: 'string' },
               isPublicBlocked: { type: 'boolean' },
+              scannedAt: { type: 'string' },
+              scannedFiles: { type: 'number' },
+              skippedFiles: { type: 'number' },
             },
           },
         },
@@ -1750,45 +1806,94 @@ MIT
       // In a real implementation, we would:
       // 1. Download the artifact from S3
       // 2. Extract the zip
-      // 3. Scan each file for secrets
+      // 3. Scan each file for secrets using scanContentForSecrets()
       // 4. Update the artifact record with scan results
 
       // For now, simulate based on manifest content
       const manifest = artifact.manifestJson as any;
       const files = manifest?.files || manifest?.parts || [];
+      const now = new Date();
 
       // Mock scan result - in production, use the artifact processor
       const mockScanResult: SecretScanResult = {
         status: 'clean',
         findings: [],
-        scannedAt: new Date().toISOString(),
+        scannedAt: now.toISOString(),
         scannedFiles: files.length,
         skippedFiles: 0,
       };
 
+      // Delete existing findings for this artifact
+      await db
+        .delete(secretFindings)
+        .where(eq(secretFindings.artifactId, params.id));
+
       // Check file names for obvious issues
       for (const file of files) {
         const filePath = file.path || file.filename || '';
-        if (
-          filePath.includes('.env') ||
-          filePath.includes('credentials') ||
-          filePath.includes('secret')
-        ) {
+
+        // Check for dangerous file patterns
+        if (filePath.match(/\.env(\..+)?$/i)) {
+          mockScanResult.status = 'flagged';
+          mockScanResult.findings.push({
+            file: filePath,
+            type: 'env_file',
+            severity: 'high',
+            description: 'Environment file may contain secrets',
+          });
+        }
+
+        if (filePath.match(/credentials\.json$/i) || filePath.match(/service[-_]?account.*\.json$/i)) {
           mockScanResult.status = 'flagged';
           mockScanResult.findings.push({
             file: filePath,
             type: 'credential_file',
             severity: 'high',
-            description: 'Potentially sensitive file detected',
+            description: 'Credential file detected',
+          });
+        }
+
+        if (filePath.match(/\.pem$/i) || filePath.match(/id_rsa$/i) || filePath.match(/\.key$/i)) {
+          mockScanResult.status = 'flagged';
+          mockScanResult.findings.push({
+            file: filePath,
+            type: 'private_key',
+            severity: 'high',
+            description: 'Private key file detected',
           });
         }
       }
+
+      // Store findings in database
+      const storedFindings = [];
+      for (const finding of mockScanResult.findings) {
+        const [inserted] = await db
+          .insert(secretFindings)
+          .values({
+            artifactId: params.id,
+            filePath: finding.file,
+            lineNumber: finding.line || null,
+            secretType: finding.type as any,
+            severity: finding.severity as any,
+            description: finding.description,
+            evidence: finding.evidence || null,
+          })
+          .returning();
+        storedFindings.push(inserted);
+      }
+
+      // Determine if public viewing should be blocked
+      const hasHighSeverity = mockScanResult.findings.some(f => f.severity === 'high');
 
       // Update artifact with scan results
       await db
         .update(artifacts)
         .set({
-          secretScanStatus: mockScanResult.status,
+          secretScanStatus: mockScanResult.status as any,
+          scannedAt: now,
+          scannedFiles: mockScanResult.scannedFiles,
+          skippedFiles: mockScanResult.skippedFiles,
+          isPublicViewable: !hasHighSeverity,
         })
         .where(eq(artifacts.id, params.id));
 
@@ -1799,8 +1904,202 @@ MIT
         artifactId: artifact.id,
         status: mockScanResult.status,
         findingsCount: mockScanResult.findings.length,
+        findings: storedFindings.map(f => ({
+          id: f.id,
+          filePath: f.filePath,
+          lineNumber: f.lineNumber,
+          secretType: f.secretType,
+          severity: f.severity,
+          description: f.description,
+          evidence: f.evidence,
+        })),
         summary,
         isPublicBlocked,
+        scannedAt: now.toISOString(),
+        scannedFiles: mockScanResult.scannedFiles,
+        skippedFiles: mockScanResult.skippedFiles,
+      };
+    }
+  );
+
+  /**
+   * GET /api/artifacts/:id/findings
+   * Get secret findings for an artifact
+   */
+  app.get(
+    '/api/artifacts/:id/findings',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              artifactId: { type: 'string' },
+              status: { type: 'string' },
+              scannedAt: { type: ['string', 'null'] },
+              findings: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    filePath: { type: 'string' },
+                    lineNumber: { type: ['number', 'null'] },
+                    secretType: { type: 'string' },
+                    severity: { type: 'string' },
+                    description: { type: 'string' },
+                    evidence: { type: ['string', 'null'] },
+                  },
+                },
+              },
+              isAcknowledged: { type: 'boolean' },
+              acknowledgedAt: { type: ['string', 'null'] },
+              acknowledgmentNote: { type: ['string', 'null'] },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = request.params as { id: string };
+
+      const [artifact] = await db
+        .select()
+        .from(artifacts)
+        .where(eq(artifacts.id, params.id));
+
+      if (!artifact) {
+        throw new NotFoundError('Artifact', params.id);
+      }
+
+      // Get findings
+      const findings = await db
+        .select()
+        .from(secretFindings)
+        .where(eq(secretFindings.artifactId, params.id));
+
+      return {
+        artifactId: artifact.id,
+        status: artifact.secretScanStatus,
+        scannedAt: artifact.scannedAt?.toISOString() || null,
+        findings: findings.map(f => ({
+          id: f.id,
+          filePath: f.filePath,
+          lineNumber: f.lineNumber,
+          secretType: f.secretType,
+          severity: f.severity,
+          description: f.description,
+          evidence: f.evidence,
+        })),
+        isAcknowledged: artifact.secretScanStatus === 'acknowledged',
+        acknowledgedAt: artifact.acknowledgedAt?.toISOString() || null,
+        acknowledgmentNote: artifact.acknowledgmentNote,
+      };
+    }
+  );
+
+  /**
+   * POST /api/artifacts/:id/acknowledge
+   * Acknowledge secrets in an artifact (owner only)
+   * This keeps the artifact private but allows the owner to continue using it
+   */
+  app.post(
+    '/api/artifacts/:id/acknowledge',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+        body: {
+          type: 'object',
+          properties: {
+            note: {
+              type: 'string',
+              description: 'Optional note explaining why secrets are acceptable',
+            },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              artifactId: { type: 'string' },
+              status: { type: 'string' },
+              acknowledgedAt: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = getUserId(request);
+      const params = request.params as { id: string };
+      const body = request.body as { note?: string };
+
+      // Get artifact
+      const [artifact] = await db
+        .select()
+        .from(artifacts)
+        .where(eq(artifacts.id, params.id));
+
+      if (!artifact) {
+        throw new NotFoundError('Artifact', params.id);
+      }
+
+      // Verify the user owns a submission with this artifact
+      const [submission] = await db
+        .select()
+        .from(submissions)
+        .where(
+          and(
+            eq(submissions.artifactId, params.id),
+            eq(submissions.userId, userId)
+          )
+        );
+
+      if (!submission) {
+        throw new ForbiddenError('You can only acknowledge secrets in your own artifacts');
+      }
+
+      // Verify artifact is flagged
+      if (artifact.secretScanStatus !== 'flagged') {
+        throw new ConflictError(
+          `Artifact is not flagged. Current status: ${artifact.secretScanStatus}`
+        );
+      }
+
+      const now = new Date();
+
+      // Update artifact to acknowledged status
+      await db
+        .update(artifacts)
+        .set({
+          secretScanStatus: 'acknowledged',
+          acknowledgedAt: now,
+          acknowledgedByUserId: userId,
+          acknowledgmentNote: body.note || null,
+          // Acknowledged artifacts remain private (not publicly viewable)
+          isPublicViewable: false,
+        })
+        .where(eq(artifacts.id, params.id));
+
+      return {
+        artifactId: artifact.id,
+        status: 'acknowledged',
+        acknowledgedAt: now.toISOString(),
+        message: 'Secrets acknowledged. The artifact will remain private but you can continue using it.',
       };
     }
   );
