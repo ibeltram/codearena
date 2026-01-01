@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Calendar,
   CreditCard,
   Download,
   Filter,
@@ -14,6 +15,7 @@ import {
   RotateCcw,
   Trophy,
   Unlock,
+  X,
   Zap,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -159,6 +163,7 @@ export function TransactionHistory() {
     page: 1,
     limit: ITEMS_PER_PAGE,
   });
+  const [showDateFilters, setShowDateFilters] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -172,6 +177,35 @@ export function TransactionHistory() {
     }));
   };
 
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFilters((prev) => ({
+      ...prev,
+      startDate: value ? new Date(value).toISOString() : undefined,
+      page: 1,
+    }));
+  };
+
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFilters((prev) => ({
+      ...prev,
+      endDate: value ? new Date(value + 'T23:59:59').toISOString() : undefined,
+      page: 1,
+    }));
+  };
+
+  const clearDateFilters = () => {
+    setFilters((prev) => ({
+      ...prev,
+      startDate: undefined,
+      endDate: undefined,
+      page: 1,
+    }));
+  };
+
+  const hasDateFilters = filters.startDate || filters.endDate;
+
   const handlePageChange = (page: number) => {
     setFilters((prev) => ({ ...prev, page }));
   };
@@ -182,6 +216,8 @@ export function TransactionHistory() {
     try {
       await exportTransactionHistory({
         type: filters.type,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
         format: 'csv',
       });
     } catch (error) {
@@ -190,46 +226,103 @@ export function TransactionHistory() {
     } finally {
       setIsExporting(false);
     }
-  }, [filters.type]);
+  }, [filters.type, filters.startDate, filters.endDate]);
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
-          <History className="h-5 w-5" />
-          Transaction History
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          <Select
-            value={filters.type || 'all'}
-            onValueChange={handleTypeFilter}
-          >
-            <SelectTrigger className="w-[180px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <span>{filterOptions[filters.type || 'all']}</span>
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(filterOptions).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            disabled={isExporting}
-          >
-            {isExporting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
-            Export
-          </Button>
+      <CardHeader className="flex flex-col gap-4">
+        <div className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Transaction History
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showDateFilters ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setShowDateFilters(!showDateFilters)}
+              className={hasDateFilters ? 'border-primary' : ''}
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Date Range
+              {hasDateFilters && (
+                <Badge variant="secondary" className="ml-2 h-5 px-1.5">
+                  Active
+                </Badge>
+              )}
+            </Button>
+            <Select
+              value={filters.type || 'all'}
+              onValueChange={handleTypeFilter}
+            >
+              <SelectTrigger className="w-[180px]">
+                <Filter className="h-4 w-4 mr-2" />
+                <span>{filterOptions[filters.type || 'all']}</span>
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(filterOptions).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Export CSV
+            </Button>
+          </div>
         </div>
+
+        {/* Date Range Filters */}
+        {showDateFilters && (
+          <div className="flex flex-wrap items-end gap-4 p-4 bg-muted/50 rounded-lg">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="startDate" className="text-sm text-muted-foreground">
+                From
+              </Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={filters.startDate ? filters.startDate.split('T')[0] : ''}
+                onChange={handleStartDateChange}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="endDate" className="text-sm text-muted-foreground">
+                To
+              </Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={filters.endDate ? filters.endDate.split('T')[0] : ''}
+                onChange={handleEndDateChange}
+                className="w-[160px]"
+              />
+            </div>
+            {hasDateFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearDateFilters}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Clear dates
+              </Button>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {/* Export error */}
