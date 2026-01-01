@@ -4,6 +4,7 @@
  * ArtifactViewer Component
  *
  * Main component for viewing artifact contents with file browser.
+ * Uses the useArtifactFile hook to fetch file content from the API.
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
@@ -17,7 +18,7 @@ import {
   buildFileTree,
   formatFileSize,
 } from '@/types/artifact';
-import { getMockFileContent } from '@/hooks/use-artifact';
+import { useArtifactFile } from '@/hooks/use-artifact';
 import { FileTree } from './file-tree';
 import { CodeViewer } from './code-viewer';
 import { MarkdownViewer } from './markdown-viewer';
@@ -37,6 +38,70 @@ const IMAGE_EXTENSIONS = new Set([
 function isImageFile(path: string): boolean {
   const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
   return IMAGE_EXTENSIONS.has(ext);
+}
+
+/**
+ * FileContentViewer - Internal component that fetches and displays file content
+ * Uses the useArtifactFile hook to fetch content from the API
+ */
+interface FileContentViewerProps {
+  artifactId: string;
+  filePath: string;
+  isMarkdown: boolean;
+}
+
+function FileContentViewer({ artifactId, filePath, isMarkdown }: FileContentViewerProps) {
+  const { data: fileContent, isLoading, error } = useArtifactFile(artifactId, filePath);
+
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center p-8">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Error Loading File
+          </h3>
+          <p className="text-gray-500 text-sm">
+            {error.message || 'Failed to load file content'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!fileContent) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center p-8">
+          <div className="text-4xl mb-4">📄</div>
+          <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+            No Content
+          </h3>
+          <p className="text-gray-500 text-sm">
+            Select a file from the tree to view its contents.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isMarkdown) {
+    return <MarkdownViewer content={fileContent.content} />;
+  }
+
+  return <CodeViewer content={fileContent} />;
 }
 
 interface ArtifactViewerProps {
@@ -62,12 +127,6 @@ export function ArtifactViewer({
     if (!artifact?.manifestJson?.files) return [];
     return buildFileTree(artifact.manifestJson.files);
   }, [artifact?.manifestJson?.files]);
-
-  // Get file content (mock for now)
-  const fileContent = useMemo(() => {
-    if (!selectedPath) return null;
-    return getMockFileContent(selectedPath);
-  }, [selectedPath]);
 
   // Handle file selection
   const handleSelectFile = useCallback((path: string) => {
@@ -256,7 +315,19 @@ export function ArtifactViewer({
 
           {/* Content viewer */}
           <div className="flex-1 overflow-auto">
-            {selectedPath && isImageFile(selectedPath) ? (
+            {!selectedPath ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center p-8">
+                  <div className="text-4xl mb-4">📂</div>
+                  <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Select a File
+                  </h3>
+                  <p className="text-gray-500 text-sm">
+                    Choose a file from the sidebar to view its contents.
+                  </p>
+                </div>
+              </div>
+            ) : isImageFile(selectedPath) ? (
               <ImageViewer
                 path={selectedPath}
                 artifactId={artifact.id}
@@ -278,10 +349,12 @@ export function ArtifactViewer({
                   </div>
                 </div>
               </div>
-            ) : isMarkdown && fileContent ? (
-              <MarkdownViewer content={fileContent.content} />
             ) : (
-              <CodeViewer content={fileContent} />
+              <FileContentViewer
+                artifactId={artifact.id}
+                filePath={selectedPath}
+                isMarkdown={isMarkdown}
+              />
             )}
           </div>
         </div>

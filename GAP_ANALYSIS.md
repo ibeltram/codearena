@@ -43,9 +43,9 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | Feature | Backend Status | UI Status | Issue |
 |---------|---------------|-----------|-------|
 | **User Profile** | ✅ FIXED | ✅ Real data | Public profile API implemented with stats/badges |
-| **Artifact Viewer** | API hooks exist | Uses mock artifact | `useArtifact()` unused, mock data instead |
+| **Artifact Viewer** | ✅ FIXED | ✅ Uses real API | `useArtifactFile()` hook wired to FileContentViewer |
 | **Match Comparison/Diff** | Returns mock | Uses mock comparison | `useMatchComparison()` returns mock |
-| **File Content Preview** | Returns mock content | Fake file content | API returns mock based on extension |
+| **File Content Preview** | ✅ API wired | ✅ Uses useArtifactFile | API called, returns mock until S3 connected |
 | **Code Submission** | Presigned URLs mock | Button exists, no handler | "Submit Code" button has no onClick |
 
 ---
@@ -128,7 +128,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 
 ---
 
-## Summary by Phase (from Spec) - Updated 2025-12-31
+## Summary by Phase (from Spec) - Updated 2026-01-01
 
 | Phase | Status | Completion |
 |-------|--------|------------|
@@ -146,11 +146,12 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 
 ---
 
-## Priority Fixes (Updated 2025-12-31)
+## Priority Fixes (Updated 2026-01-01)
 
 1. ~~Wire auth context~~ - DONE for profile page
 2. ~~Add "Join Match" button~~ - DONE ("Sign in to Compete")
 3. ~~Build judging results UI~~ - DONE
 4. ~~Wire admin dashboard stats~~ - DONE (GET /api/admin/stats with real data)
-5. **Phase 10: Automation Services** - Not started
-6. **Production hardening** - Continue pen testing, load testing
+5. ~~Wire artifact viewer to real API~~ - DONE (useArtifactFile hook integrated)
+6. **Phase 10: Automation Services** - Not started
+7. **Production hardening** - Continue pen testing, load testing
