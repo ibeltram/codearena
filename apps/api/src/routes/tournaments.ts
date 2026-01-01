@@ -123,6 +123,27 @@ interface BracketMatch {
   loserNextMatchId?: string;
 }
 
+// Swiss tournament types
+interface SwissStanding {
+  participantId: string;
+  points: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  matchesPlayed: number;
+  buchholz: number; // Sum of opponents' points (primary tie-breaker)
+  sonnebornBerger: number; // Sum of points of beaten opponents + half points of drawn opponents
+  opponentIds: string[]; // Track who they've played to avoid repeat pairings
+}
+
+interface SwissRules {
+  numRounds?: number;
+  pointsForWin?: number;
+  pointsForDraw?: number;
+  pointsForLoss?: number;
+  pointsForBye?: number;
+}
+
 // Helper to get user ID from request
 const getUserId = (request: FastifyRequest): string => {
   const userId = request.headers['x-user-id'] as string;
@@ -484,9 +505,9 @@ async function linkDoubleEliminationBracket(
 }
 
 /**
- * Generate Swiss format rounds
+ * Generate Swiss format rounds (initial round 1)
  */
-function generateSwissRounds(participantIds: string[], numRounds: number = 5): BracketMatch[] {
+function generateSwissRounds(participantIds: string[], _numRounds: number = 5): BracketMatch[] {
   const matches: BracketMatch[] = [];
 
   // In Swiss, pairings are determined after each round based on standings
@@ -514,6 +535,319 @@ function generateSwissRounds(participantIds: string[], numRounds: number = 5): B
   }
 
   return matches;
+}
+
+/**
+ * Calculate Swiss standings from completed matches
+ *
+ * @param tournamentId - Tournament ID
+ * @param rules - Swiss rules configuration
+ * @returns Array of standings sorted by rank
+ */
+async function calculateSwissStandings(
+  tournamentId: string,
+  rules: SwissRules = {}
+): Promise<SwissStanding[]> {
+  const {
+    pointsForWin = 1,
+    pointsForDraw = 0.5,
+    pointsForLoss = 0,
+    pointsForBye = 1,
+  } = rules;
+
+  // Get all matches for this tournament
+  const matches = await db
+    .select()
+    .from(tournamentBracketMatches)
+    .where(eq(tournamentBracketMatches.tournamentId, tournamentId));
+
+  // Get all registered participants
+  const registrations = await db
+    .select({ userId: tournamentRegistrations.userId })
+    .from(tournamentRegistrations)
+    .where(eq(tournamentRegistrations.tournamentId, tournamentId));
+
+  // Initialize standings for all participants
+  const standingsMap = new Map<string, SwissStanding>();
+  for (const reg of registrations) {
+    standingsMap.set(reg.userId, {
+      participantId: reg.userId,
+      points: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      matchesPlayed: 0,
+      buchholz: 0,
+      sonnebornBerger: 0,
+      opponentIds: [],
+    });
+  }
+
+  // Process completed matches
+  for (const match of matches) {
+    if (match.status === 'completed' && match.winnerId) {
+      const p1 = match.participant1Id;
+      const p2 = match.participant2Id;
+
+      if (p1 && p2) {
+        const standing1 = standingsMap.get(p1);
+        const standing2 = standingsMap.get(p2);
+
+        if (standing1 && standing2) {
+          // Track opponents
+          standing1.opponentIds.push(p2);
+          standing2.opponentIds.push(p1);
+
+          standing1.matchesPlayed++;
+          standing2.matchesPlayed++;
+
+          if (match.winnerId === p1) {
+            // p1 wins
+            standing1.wins++;
+            standing1.points += pointsForWin;
+            standing2.losses++;
+            standing2.points += pointsForLoss;
+          } else if (match.winnerId === p2) {
+            // p2 wins
+            standing2.wins++;
+            standing2.points += pointsForWin;
+            standing1.losses++;
+            standing1.points += pointsForLoss;
+          }
+        }
+      }
+    } else if (match.status === 'completed' && !match.winnerId && match.participant1Id && match.participant2Id) {
+      // Draw (no winner set but match completed with both participants)
+      const p1 = match.participant1Id;
+      const p2 = match.participant2Id;
+      const standing1 = standingsMap.get(p1);
+      const standing2 = standingsMap.get(p2);
+
+      if (standing1 && standing2) {
+        standing1.opponentIds.push(p2);
+        standing2.opponentIds.push(p1);
+
+        standing1.matchesPlayed++;
+        standing2.matchesPlayed++;
+
+        standing1.draws++;
+        standing2.draws++;
+        standing1.points += pointsForDraw;
+        standing2.points += pointsForDraw;
+      }
+    } else if (match.status === 'bye' && match.participant1Id) {
+      // Bye - participant gets points without playing
+      const standing = standingsMap.get(match.participant1Id);
+      if (standing) {
+        standing.points += pointsForBye;
+        standing.matchesPlayed++;
+        standing.wins++; // Count bye as a win for record purposes
+      }
+    }
+  }
+
+  // Calculate tie-breakers
+  const standings = Array.from(standingsMap.values());
+
+  // Buchholz: sum of all opponents' points
+  for (const standing of standings) {
+    standing.buchholz = standing.opponentIds.reduce((sum, oppId) => {
+      const oppStanding = standingsMap.get(oppId);
+      return sum + (oppStanding?.points || 0);
+    }, 0);
+  }
+
+  // Sonneborn-Berger: sum of points of beaten opponents + half points of drawn opponents
+  for (const match of matches) {
+    if (match.status === 'completed' && match.participant1Id && match.participant2Id) {
+      const p1 = match.participant1Id;
+      const p2 = match.participant2Id;
+      const standing1 = standingsMap.get(p1);
+      const standing2 = standingsMap.get(p2);
+
+      if (standing1 && standing2) {
+        if (match.winnerId === p1) {
+          // p1 beat p2 - add p2's full points to p1's SB
+          standing1.sonnebornBerger += standing2.points;
+        } else if (match.winnerId === p2) {
+          // p2 beat p1 - add p1's full points to p2's SB
+          standing2.sonnebornBerger += standing1.points;
+        } else if (!match.winnerId) {
+          // Draw - add half of opponent's points to each
+          standing1.sonnebornBerger += standing2.points * 0.5;
+          standing2.sonnebornBerger += standing1.points * 0.5;
+        }
+      }
+    }
+  }
+
+  // Sort standings: points (desc), buchholz (desc), sonnebornBerger (desc)
+  standings.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.buchholz !== a.buchholz) return b.buchholz - a.buchholz;
+    return b.sonnebornBerger - a.sonnebornBerger;
+  });
+
+  return standings;
+}
+
+/**
+ * Generate Swiss pairings for the next round
+ *
+ * Uses the Monrad system: pair players with similar scores, avoiding repeat pairings
+ *
+ * @param standings - Current standings sorted by rank
+ * @param roundNumber - The round number to generate
+ * @returns Array of matches for the next round
+ */
+function generateSwissPairings(standings: SwissStanding[], roundNumber: number): BracketMatch[] {
+  const matches: BracketMatch[] = [];
+  const paired = new Set<string>();
+
+  // Group players by points
+  const pointGroups = new Map<number, SwissStanding[]>();
+  for (const standing of standings) {
+    const points = standing.points;
+    if (!pointGroups.has(points)) {
+      pointGroups.set(points, []);
+    }
+    pointGroups.get(points)!.push(standing);
+  }
+
+  // Sort point groups by points (descending)
+  const sortedPoints = Array.from(pointGroups.keys()).sort((a, b) => b - a);
+
+  // Create a flat list of unpaired players for fallback
+  const unpaired: SwissStanding[] = [...standings];
+
+  let matchPosition = 0;
+
+  // Try to pair within point groups first
+  for (const points of sortedPoints) {
+    const group = pointGroups.get(points)!;
+
+    for (let i = 0; i < group.length; i++) {
+      const player1 = group[i];
+      if (paired.has(player1.participantId)) continue;
+
+      // Find best opponent (hasn't played player1 yet)
+      let bestOpponent: SwissStanding | null = null;
+
+      // First, try within the same point group
+      for (let j = i + 1; j < group.length; j++) {
+        const candidate = group[j];
+        if (paired.has(candidate.participantId)) continue;
+        if (player1.opponentIds.includes(candidate.participantId)) continue; // Already played
+        bestOpponent = candidate;
+        break;
+      }
+
+      // If no valid opponent in same group, look in lower groups
+      if (!bestOpponent) {
+        const currentPointIndex = sortedPoints.indexOf(points);
+        for (let k = currentPointIndex + 1; k < sortedPoints.length && !bestOpponent; k++) {
+          const lowerGroup = pointGroups.get(sortedPoints[k])!;
+          for (const candidate of lowerGroup) {
+            if (paired.has(candidate.participantId)) continue;
+            if (player1.opponentIds.includes(candidate.participantId)) continue;
+            bestOpponent = candidate;
+            break;
+          }
+        }
+      }
+
+      // If still no opponent found, try anyone unpaired (even repeat pairing as last resort)
+      if (!bestOpponent) {
+        for (const candidate of unpaired) {
+          if (candidate.participantId === player1.participantId) continue;
+          if (paired.has(candidate.participantId)) continue;
+          // Allow repeat pairing as last resort
+          bestOpponent = candidate;
+          break;
+        }
+      }
+
+      if (bestOpponent) {
+        matches.push({
+          round: roundNumber,
+          position: matchPosition++,
+          participant1Id: player1.participantId,
+          participant2Id: bestOpponent.participantId,
+          status: 'pending',
+        });
+
+        paired.add(player1.participantId);
+        paired.add(bestOpponent.participantId);
+      }
+    }
+  }
+
+  // Handle odd player - gets a bye
+  // Find player who hasn't had a bye yet if possible
+  const unpairedPlayers = standings.filter(s => !paired.has(s.participantId));
+  if (unpairedPlayers.length === 1) {
+    const byePlayer = unpairedPlayers[0];
+    matches.push({
+      round: roundNumber,
+      position: matchPosition++,
+      participant1Id: byePlayer.participantId,
+      status: 'bye',
+    });
+  } else if (unpairedPlayers.length > 1) {
+    // Shouldn't happen, but pair remaining players even if they've played before
+    for (let i = 0; i < unpairedPlayers.length; i += 2) {
+      if (i + 1 < unpairedPlayers.length) {
+        matches.push({
+          round: roundNumber,
+          position: matchPosition++,
+          participant1Id: unpairedPlayers[i].participantId,
+          participant2Id: unpairedPlayers[i + 1].participantId,
+          status: 'pending',
+        });
+      } else {
+        // Last odd player gets bye
+        matches.push({
+          round: roundNumber,
+          position: matchPosition++,
+          participant1Id: unpairedPlayers[i].participantId,
+          status: 'bye',
+        });
+      }
+    }
+  }
+
+  return matches;
+}
+
+/**
+ * Check if a Swiss round is complete
+ */
+async function isSwissRoundComplete(tournamentId: string, round: number): Promise<boolean> {
+  const matches = await db
+    .select()
+    .from(tournamentBracketMatches)
+    .where(
+      and(
+        eq(tournamentBracketMatches.tournamentId, tournamentId),
+        eq(tournamentBracketMatches.round, round)
+      )
+    );
+
+  if (matches.length === 0) return false;
+
+  return matches.every(m => m.status === 'completed' || m.status === 'bye');
+}
+
+/**
+ * Get the current round number for a Swiss tournament
+ */
+async function getCurrentSwissRound(tournamentId: string): Promise<number> {
+  const [result] = await db
+    .select({ maxRound: sql<number>`MAX(${tournamentBracketMatches.round})` })
+    .from(tournamentBracketMatches)
+    .where(eq(tournamentBracketMatches.tournamentId, tournamentId));
+
+  return result?.maxRound || 0;
 }
 
 export async function tournamentRoutes(app: FastifyInstance) {
@@ -1724,6 +2058,394 @@ export async function tournamentRoutes(app: FastifyInstance) {
       bracketSide: bracketMatch.bracketSide,
       nextMatchId: bracketMatch.nextMatchId,
       loserNextMatchId: bracketMatch.loserNextMatchId,
+    };
+  });
+
+  // ============================================
+  // Swiss Tournament Routes
+  // ============================================
+
+  // GET /api/tournaments/:id/swiss/standings - Get Swiss tournament standings
+  app.get('/api/tournaments/:id/swiss/standings', async (request: FastifyRequest, reply: FastifyReply) => {
+    const paramResult = tournamentIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid tournament ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: tournamentId } = paramResult.data;
+
+    // Get tournament
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    if (!tournament) {
+      throw new NotFoundError('Tournament', tournamentId);
+    }
+
+    if (tournament.format !== 'swiss') {
+      throw new ValidationError('This endpoint is only for Swiss format tournaments');
+    }
+
+    // Get Swiss rules from tournament config
+    const rulesJson = tournament.rulesJson as SwissRules || {};
+
+    // Calculate standings
+    const standings = await calculateSwissStandings(tournamentId, rulesJson);
+
+    // Get current round info
+    const currentRound = await getCurrentSwissRound(tournamentId);
+    const roundComplete = currentRound > 0 ? await isSwissRoundComplete(tournamentId, currentRound) : true;
+    const numRounds = rulesJson.numRounds || Math.ceil(Math.log2(standings.length + 1));
+
+    // Get user info for display
+    const participantIds = standings.map(s => s.participantId);
+    const userInfo = participantIds.length > 0
+      ? await db
+          .select({
+            id: users.id,
+            displayName: users.displayName,
+            avatarUrl: users.avatarUrl,
+          })
+          .from(users)
+          .where(sql`${users.id} IN ${participantIds}`)
+      : [];
+
+    const userMap = new Map(userInfo.map(u => [u.id, u]));
+
+    // Enrich standings with user info and rank
+    const enrichedStandings = standings.map((standing, index) => ({
+      rank: index + 1,
+      ...standing,
+      user: userMap.get(standing.participantId) || {
+        id: standing.participantId,
+        displayName: 'Unknown',
+        avatarUrl: null,
+      },
+    }));
+
+    return {
+      tournamentId,
+      format: 'swiss',
+      status: tournament.status,
+      currentRound,
+      totalRounds: numRounds,
+      roundComplete,
+      canGenerateNextRound: roundComplete && currentRound < numRounds && tournament.status === 'in_progress',
+      standings: enrichedStandings,
+      rules: {
+        numRounds,
+        pointsForWin: rulesJson.pointsForWin ?? 1,
+        pointsForDraw: rulesJson.pointsForDraw ?? 0.5,
+        pointsForLoss: rulesJson.pointsForLoss ?? 0,
+        pointsForBye: rulesJson.pointsForBye ?? 1,
+      },
+    };
+  });
+
+  // POST /api/admin/tournaments/:id/swiss/generate-round - Generate next Swiss round
+  app.post('/api/admin/tournaments/:id/swiss/generate-round', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const paramResult = tournamentIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid tournament ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: tournamentId } = paramResult.data;
+
+    // Get tournament
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    if (!tournament) {
+      throw new NotFoundError('Tournament', tournamentId);
+    }
+
+    if (tournament.format !== 'swiss') {
+      throw new ValidationError('This endpoint is only for Swiss format tournaments');
+    }
+
+    if (tournament.status !== 'in_progress') {
+      throw new ConflictError('Tournament must be in progress to generate rounds');
+    }
+
+    // Get Swiss rules
+    const rulesJson = tournament.rulesJson as SwissRules || {};
+
+    // Check current round status
+    const currentRound = await getCurrentSwissRound(tournamentId);
+
+    // For first round, currentRound will be 0 or matches already exist
+    if (currentRound > 0) {
+      const roundComplete = await isSwissRoundComplete(tournamentId, currentRound);
+      if (!roundComplete) {
+        throw new ConflictError(`Round ${currentRound} is not yet complete. All matches must be finished before generating the next round.`);
+      }
+    }
+
+    // Check if we've reached the maximum rounds
+    const standings = await calculateSwissStandings(tournamentId, rulesJson);
+    const numRounds = rulesJson.numRounds || Math.ceil(Math.log2(standings.length + 1));
+    const nextRound = currentRound + 1;
+
+    if (nextRound > numRounds) {
+      // Tournament is complete - determine final placements
+      for (let i = 0; i < standings.length; i++) {
+        await db
+          .update(tournamentRegistrations)
+          .set({ finalPlacement: i + 1 })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.userId, standings[i].participantId)
+            )
+          );
+      }
+
+      // Mark tournament as completed
+      await db
+        .update(tournaments)
+        .set({ status: 'completed', updatedAt: new Date() })
+        .where(eq(tournaments.id, tournamentId));
+
+      return {
+        message: 'Swiss tournament completed',
+        tournamentId,
+        finalStandings: standings.map((s, i) => ({
+          rank: i + 1,
+          participantId: s.participantId,
+          points: s.points,
+          wins: s.wins,
+          losses: s.losses,
+          draws: s.draws,
+        })),
+        totalRounds: currentRound,
+      };
+    }
+
+    // Generate pairings for next round
+    const newMatches = generateSwissPairings(standings, nextRound);
+
+    // Insert new matches
+    const insertedMatches = await db
+      .insert(tournamentBracketMatches)
+      .values(
+        newMatches.map(m => ({
+          tournamentId,
+          round: m.round,
+          position: m.position,
+          participant1Id: m.participant1Id,
+          participant2Id: m.participant2Id,
+          status: m.status,
+        }))
+      )
+      .returning();
+
+    // Update bracket JSON with round info
+    const bracketJson = tournament.bracketJson as Record<string, unknown> || {};
+    await db
+      .update(tournaments)
+      .set({
+        bracketJson: {
+          ...bracketJson,
+          currentRound: nextRound,
+          totalRounds: numRounds,
+          lastRoundGeneratedAt: new Date().toISOString(),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(tournaments.id, tournamentId));
+
+    return {
+      message: `Round ${nextRound} generated successfully`,
+      tournamentId,
+      round: nextRound,
+      totalRounds: numRounds,
+      matchesCreated: insertedMatches.length,
+      matches: insertedMatches.map(m => ({
+        id: m.id,
+        round: m.round,
+        position: m.position,
+        participant1Id: m.participant1Id,
+        participant2Id: m.participant2Id,
+        status: m.status,
+      })),
+    };
+  });
+
+  // POST /api/admin/tournaments/:id/swiss/complete - Complete Swiss tournament early
+  app.post('/api/admin/tournaments/:id/swiss/complete', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const paramResult = tournamentIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid tournament ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: tournamentId } = paramResult.data;
+
+    // Get tournament
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    if (!tournament) {
+      throw new NotFoundError('Tournament', tournamentId);
+    }
+
+    if (tournament.format !== 'swiss') {
+      throw new ValidationError('This endpoint is only for Swiss format tournaments');
+    }
+
+    if (tournament.status !== 'in_progress') {
+      throw new ConflictError('Tournament must be in progress to complete');
+    }
+
+    // Check that current round is complete
+    const currentRound = await getCurrentSwissRound(tournamentId);
+    if (currentRound > 0) {
+      const roundComplete = await isSwissRoundComplete(tournamentId, currentRound);
+      if (!roundComplete) {
+        throw new ConflictError('Current round must be complete before ending the tournament');
+      }
+    }
+
+    // Calculate final standings
+    const rulesJson = tournament.rulesJson as SwissRules || {};
+    const standings = await calculateSwissStandings(tournamentId, rulesJson);
+
+    // Set final placements
+    for (let i = 0; i < standings.length; i++) {
+      await db
+        .update(tournamentRegistrations)
+        .set({ finalPlacement: i + 1 })
+        .where(
+          and(
+            eq(tournamentRegistrations.tournamentId, tournamentId),
+            eq(tournamentRegistrations.userId, standings[i].participantId)
+          )
+        );
+    }
+
+    // Mark tournament as completed
+    await db
+      .update(tournaments)
+      .set({ status: 'completed', updatedAt: new Date() })
+      .where(eq(tournaments.id, tournamentId));
+
+    return {
+      message: 'Swiss tournament completed',
+      tournamentId,
+      roundsPlayed: currentRound,
+      finalStandings: standings.map((s, i) => ({
+        rank: i + 1,
+        participantId: s.participantId,
+        points: s.points,
+        wins: s.wins,
+        losses: s.losses,
+        draws: s.draws,
+        buchholz: s.buchholz,
+        sonnebornBerger: s.sonnebornBerger,
+      })),
+    };
+  });
+
+  // POST /api/admin/tournaments/:id/swiss/record-draw - Record a draw for a Swiss match
+  app.post('/api/admin/tournaments/:id/bracket-matches/:matchId/draw', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const paramsSchema = z.object({
+      id: z.string().uuid(),
+      matchId: z.string().uuid(),
+    });
+
+    const paramResult = paramsSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid parameters', { issues: paramResult.error.issues });
+    }
+
+    const { id: tournamentId, matchId } = paramResult.data;
+
+    // Get tournament
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    if (!tournament) {
+      throw new NotFoundError('Tournament', tournamentId);
+    }
+
+    if (tournament.format !== 'swiss') {
+      throw new ValidationError('Draws are only supported for Swiss format tournaments');
+    }
+
+    if (tournament.status !== 'in_progress') {
+      throw new ConflictError('Tournament is not in progress');
+    }
+
+    // Get the bracket match
+    const [bracketMatch] = await db
+      .select()
+      .from(tournamentBracketMatches)
+      .where(
+        and(
+          eq(tournamentBracketMatches.id, matchId),
+          eq(tournamentBracketMatches.tournamentId, tournamentId)
+        )
+      );
+
+    if (!bracketMatch) {
+      throw new NotFoundError('Bracket match', matchId);
+    }
+
+    if (bracketMatch.status === 'completed') {
+      throw new ConflictError('Match has already been completed');
+    }
+
+    if (bracketMatch.status === 'bye') {
+      throw new ConflictError('Cannot record result for a bye match');
+    }
+
+    if (!bracketMatch.participant1Id || !bracketMatch.participant2Id) {
+      throw new ValidationError('Both participants must be set to record a draw');
+    }
+
+    // Update match as a draw (completed with no winner)
+    await db
+      .update(tournamentBracketMatches)
+      .set({
+        status: 'completed',
+        completedAt: new Date(),
+        // winnerId remains null to indicate a draw
+      })
+      .where(eq(tournamentBracketMatches.id, matchId));
+
+    return {
+      message: 'Draw recorded',
+      matchId,
+      participant1Id: bracketMatch.participant1Id,
+      participant2Id: bracketMatch.participant2Id,
     };
   });
 

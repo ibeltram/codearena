@@ -212,6 +212,80 @@ export const formatDescriptions: Record<TournamentFormat, string> = {
   round_robin: 'Everyone plays everyone',
 };
 
+// ============================================
+// Swiss Tournament Types
+// ============================================
+
+export interface SwissRules {
+  numRounds?: number;
+  pointsForWin?: number;
+  pointsForDraw?: number;
+  pointsForLoss?: number;
+  pointsForBye?: number;
+}
+
+export interface SwissStanding {
+  rank: number;
+  participantId: string;
+  points: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  matchesPlayed: number;
+  buchholz: number; // Sum of opponents' points (primary tie-breaker)
+  sonnebornBerger: number; // Sum of points of beaten opponents + half points of drawn opponents
+  opponentIds: string[];
+  user: {
+    id: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
+}
+
+export interface SwissStandingsResponse {
+  tournamentId: string;
+  format: 'swiss';
+  status: TournamentStatus;
+  currentRound: number;
+  totalRounds: number;
+  roundComplete: boolean;
+  canGenerateNextRound: boolean;
+  standings: SwissStanding[];
+  rules: SwissRules;
+}
+
+export interface SwissGenerateRoundResponse {
+  message: string;
+  tournamentId: string;
+  round: number;
+  totalRounds: number;
+  matchesCreated: number;
+  matches: {
+    id: string;
+    round: number;
+    position: number;
+    participant1Id: string | null;
+    participant2Id: string | null;
+    status: string;
+  }[];
+}
+
+export interface SwissCompleteResponse {
+  message: string;
+  tournamentId: string;
+  roundsPlayed: number;
+  finalStandings: {
+    rank: number;
+    participantId: string;
+    points: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    buchholz?: number;
+    sonnebornBerger?: number;
+  }[];
+}
+
 // Helper to check if registration is available
 export function canRegister(tournament: Tournament | TournamentListItem): boolean {
   if (tournament.status !== 'registration_open') return false;
