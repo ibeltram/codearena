@@ -25,7 +25,7 @@ export type BracketMatchStatus =
   | 'completed'
   | 'bye';
 
-export type BracketSide = 'winners' | 'losers' | 'grand_finals';
+export type BracketSide = 'winners' | 'losers' | 'grand_finals' | 'grand_finals_reset';
 
 export interface PrizePool {
   total?: number;

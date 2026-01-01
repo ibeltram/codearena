@@ -44,11 +44,29 @@ function getParticipantInfo(
   return participants[participantId] || null;
 }
 
-function getRoundName(round: number, totalRounds: number): string {
-  if (round === totalRounds) return 'Finals';
-  if (round === totalRounds - 1) return 'Semi-Finals';
-  if (round === totalRounds - 2) return 'Quarter-Finals';
-  return `Round ${round}`;
+function getRoundName(round: number, totalRounds: number, bracketSide?: string | null): string {
+  // Handle special bracket sides for double elimination
+  if (bracketSide === 'grand_finals') return 'Grand Finals';
+  if (bracketSide === 'grand_finals_reset') return 'Bracket Reset';
+
+  // Standard round names for winners/losers brackets
+  const prefix = bracketSide === 'losers' ? 'L' : bracketSide === 'winners' ? 'W' : '';
+
+  if (round === totalRounds) return `${prefix}Finals`.trim();
+  if (round === totalRounds - 1) return `${prefix}Semi-Finals`.trim();
+  if (round === totalRounds - 2) return `${prefix}Quarter-Finals`.trim();
+  return `${prefix}Round ${round}`.trim();
+}
+
+// Get bracket side display label
+function getBracketSideLabel(bracketSide: string | null): string {
+  switch (bracketSide) {
+    case 'winners': return 'Winners Bracket';
+    case 'losers': return 'Losers Bracket';
+    case 'grand_finals': return 'Grand Finals';
+    case 'grand_finals_reset': return 'Bracket Reset';
+    default: return '';
+  }
 }
 
 function MatchNode({ match, participants, onClick, roundName }: MatchNodeProps) {
@@ -483,7 +501,7 @@ export function BracketViewer({
   );
 }
 
-// Compact bracket view for small screens
+// Compact bracket view for small screens - handles both single and double elimination
 export function BracketList({
   matches,
   participants,
@@ -493,72 +511,205 @@ export function BracketList({
   participants: Record<string, BracketParticipantInfo>;
   onMatchClick?: (match: BracketMatch) => void;
 }) {
-  // Group by round
-  const roundGroups = useMemo(() => {
-    const groups: Record<number, BracketMatch[]> = {};
+  // Group by bracket side, then by round
+  const bracketGroups = useMemo(() => {
+    // Check if this is a double elimination bracket
+    const hasWinnersBracket = matches.some(m => m.bracketSide === 'winners');
+    const hasLosersBracket = matches.some(m => m.bracketSide === 'losers');
+    const isDoubleElim = hasWinnersBracket && hasLosersBracket;
+
+    if (!isDoubleElim) {
+      // Single elimination - just group by round
+      const groups: Record<number, BracketMatch[]> = {};
+      matches.forEach((match) => {
+        if (!groups[match.round]) groups[match.round] = [];
+        groups[match.round].push(match);
+      });
+      return { type: 'single' as const, rounds: groups };
+    }
+
+    // Double elimination - group by bracket side then round
+    const winners: Record<number, BracketMatch[]> = {};
+    const losers: Record<number, BracketMatch[]> = {};
+    const grandFinals: BracketMatch[] = [];
+    const bracketReset: BracketMatch[] = [];
+
     matches.forEach((match) => {
-      if (!groups[match.round]) groups[match.round] = [];
-      groups[match.round].push(match);
+      if (match.bracketSide === 'winners') {
+        if (!winners[match.round]) winners[match.round] = [];
+        winners[match.round].push(match);
+      } else if (match.bracketSide === 'losers') {
+        if (!losers[match.round]) losers[match.round] = [];
+        losers[match.round].push(match);
+      } else if (match.bracketSide === 'grand_finals') {
+        grandFinals.push(match);
+      } else if (match.bracketSide === 'grand_finals_reset') {
+        bracketReset.push(match);
+      }
     });
-    return groups;
+
+    return {
+      type: 'double' as const,
+      winners,
+      losers,
+      grandFinals,
+      bracketReset,
+    };
   }, [matches]);
 
-  const roundNumbers = Object.keys(roundGroups)
-    .map(Number)
-    .sort((a, b) => a - b);
+  const renderMatch = (match: BracketMatch) => {
+    const p1 = getParticipantInfo(match.participant1Id, participants);
+    const p2 = getParticipantInfo(match.participant2Id, participants);
+    const isComplete = match.status === 'completed';
+    const isBye = match.status === 'bye';
+    const winner = match.winnerId;
+
+    return (
+      <Card
+        key={match.id}
+        className={cn(
+          'cursor-pointer hover:bg-muted/50',
+          isBye && 'opacity-60'
+        )}
+        onClick={() => onMatchClick?.(match)}
+      >
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="flex flex-col gap-1 flex-1">
+                <span
+                  className={cn(
+                    'text-sm',
+                    isComplete && winner === match.participant1Id && 'font-semibold text-green-600 dark:text-green-400'
+                  )}
+                >
+                  {p1?.displayName || 'TBD'}
+                </span>
+                <span className="text-xs text-muted-foreground">vs</span>
+                <span
+                  className={cn(
+                    'text-sm',
+                    isComplete && winner === match.participant2Id && 'font-semibold text-green-600 dark:text-green-400'
+                  )}
+                >
+                  {p2?.displayName || 'TBD'}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {isBye && (
+                <Badge variant="outline" className="text-xs">Skipped</Badge>
+              )}
+              {isComplete && !isBye && (
+                <Badge variant="secondary" className="text-xs">Done</Badge>
+              )}
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  if (bracketGroups.type === 'single') {
+    const roundNumbers = Object.keys(bracketGroups.rounds)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    return (
+      <div className="space-y-6">
+        {roundNumbers.map((roundNum) => (
+          <div key={roundNum}>
+            <h3 className="font-semibold mb-3">
+              {getRoundName(roundNum, Math.max(...roundNumbers))}
+            </h3>
+            <div className="space-y-2">
+              {bracketGroups.rounds[roundNum].map(renderMatch)}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Double elimination layout
+  const winnersRounds = Object.keys(bracketGroups.winners).map(Number).sort((a, b) => a - b);
+  const losersRounds = Object.keys(bracketGroups.losers).map(Number).sort((a, b) => a - b);
+  const maxWinnersRound = Math.max(...winnersRounds, 0);
+  const maxLosersRound = Math.max(...losersRounds, 0);
 
   return (
-    <div className="space-y-6">
-      {roundNumbers.map((roundNum) => (
-        <div key={roundNum}>
-          <h3 className="font-semibold mb-3">
-            {getRoundName(roundNum, Math.max(...roundNumbers))}
-          </h3>
-          <div className="space-y-2">
-            {roundGroups[roundNum].map((match) => {
-              const p1 = getParticipantInfo(match.participant1Id, participants);
-              const p2 = getParticipantInfo(match.participant2Id, participants);
-              const isComplete = match.status === 'completed';
-              const winner = match.winnerId;
+    <div className="space-y-8">
+      {/* Winners Bracket */}
+      <div>
+        <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <Trophy className="h-5 w-5 text-amber-500" />
+          Winners Bracket
+        </h2>
+        <div className="space-y-4 pl-4 border-l-2 border-amber-300">
+          {winnersRounds.map((roundNum) => (
+            <div key={`w-${roundNum}`}>
+              <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                {getRoundName(roundNum, maxWinnersRound, 'winners')}
+              </h4>
+              <div className="space-y-2">
+                {bracketGroups.winners[roundNum].map(renderMatch)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-              return (
-                <Card
-                  key={match.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => onMatchClick?.(match)}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="flex flex-col gap-1 flex-1">
-                          <span
-                            className={cn(
-                              'text-sm',
-                              isComplete && winner === match.participant1Id && 'font-semibold'
-                            )}
-                          >
-                            {p1?.displayName || 'TBD'}
-                          </span>
-                          <span className="text-xs text-muted-foreground">vs</span>
-                          <span
-                            className={cn(
-                              'text-sm',
-                              isComplete && winner === match.participant2Id && 'font-semibold'
-                            )}
-                          >
-                            {p2?.displayName || 'TBD'}
-                          </span>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+      {/* Losers Bracket */}
+      {losersRounds.length > 0 && (
+        <div>
+          <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <User className="h-5 w-5 text-gray-500" />
+            Losers Bracket
+          </h2>
+          <div className="space-y-4 pl-4 border-l-2 border-gray-300">
+            {losersRounds.map((roundNum) => (
+              <div key={`l-${roundNum}`}>
+                <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                  {getRoundName(roundNum, maxLosersRound, 'losers')}
+                </h4>
+                <div className="space-y-2">
+                  {bracketGroups.losers[roundNum].map(renderMatch)}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      ))}
+      )}
+
+      {/* Grand Finals */}
+      {bracketGroups.grandFinals.length > 0 && (
+        <div>
+          <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-purple-500" />
+            Grand Finals
+          </h2>
+          <div className="pl-4 border-l-2 border-purple-300 space-y-2">
+            {bracketGroups.grandFinals.map(renderMatch)}
+          </div>
+        </div>
+      )}
+
+      {/* Bracket Reset */}
+      {bracketGroups.bracketReset.length > 0 && (
+        <div>
+          <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-red-500" />
+            Bracket Reset
+            <span className="text-xs font-normal text-muted-foreground">
+              (if losers bracket champion wins grand finals)
+            </span>
+          </h2>
+          <div className="pl-4 border-l-2 border-red-300 space-y-2">
+            {bracketGroups.bracketReset.map(renderMatch)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

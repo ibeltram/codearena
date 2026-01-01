@@ -214,8 +214,30 @@ function generateSingleEliminationBracket(participantIds: string[]): BracketMatc
 
 /**
  * Generate double elimination bracket
+ *
+ * Double elimination structure:
+ * - Winners Bracket: Standard single elimination
+ * - Losers Bracket: Players who lose in winners get a second chance
+ *   - Alternates between "drop-down" rounds (receiving losers from winners) and "progression" rounds
+ * - Grand Finals: Winners bracket champion vs Losers bracket champion
+ * - Bracket Reset: If losers winner beats winners champion, they play again (both have 1 loss)
+ *
+ * Losers bracket round structure (for N winners rounds):
+ *   - LR1: Losers from WR1 (first half) vs Losers from WR1 (second half)
+ *   - LR2: Winners of LR1 vs Losers from WR2 (drop-down)
+ *   - LR3: Winners of LR2 play each other (progression)
+ *   - LR4: Winners of LR3 vs Losers from WR3 (drop-down)
+ *   - ... and so on
+ *   - Total losers rounds: 2 * (N - 1)
  */
 function generateDoubleEliminationBracket(participantIds: string[]): BracketMatch[] {
+  const numParticipants = participantIds.length;
+
+  // Need at least 2 participants
+  if (numParticipants < 2) {
+    return [];
+  }
+
   // Generate winners bracket (same as single elimination)
   const winnersMatches = generateSingleEliminationBracket(participantIds);
 
@@ -224,35 +246,241 @@ function generateDoubleEliminationBracket(participantIds: string[]): BracketMatc
     m.bracketSide = 'winners';
   });
 
-  // Generate losers bracket (more complex - roughly 2x-1 the rounds)
-  const numRounds = winnersMatches.reduce((max, m) => Math.max(max, m.round), 0);
+  const winnersNumRounds = winnersMatches.reduce((max, m) => Math.max(max, m.round), 0);
+
+  // For very small brackets (2-3 participants), single elimination is sufficient
+  if (winnersNumRounds < 2) {
+    // Just add a simple losers bracket and grand finals
+    const loserMatch: BracketMatch = {
+      round: 1,
+      position: 0,
+      bracketSide: 'losers',
+      status: 'pending',
+    };
+
+    const grandFinals: BracketMatch = {
+      round: 2,
+      position: 0,
+      bracketSide: 'grand_finals',
+      status: 'pending',
+    };
+
+    const bracketReset: BracketMatch = {
+      round: 3,
+      position: 0,
+      bracketSide: 'grand_finals_reset',
+      status: 'pending',
+    };
+
+    return [...winnersMatches, loserMatch, grandFinals, bracketReset];
+  }
+
+  // Build losers bracket structure
+  // Losers bracket has 2 * (winnersNumRounds - 1) rounds
+  const losersNumRounds = 2 * (winnersNumRounds - 1);
   const losersMatches: BracketMatch[] = [];
 
-  // Losers bracket has approximately 2 * numRounds - 1 rounds
-  // For simplicity, we'll create placeholder structure
-  let losersPosition = 0;
-  for (let round = 1; round <= numRounds * 2 - 1; round++) {
-    const numMatchesInRound = Math.max(1, Math.floor(Math.pow(2, numRounds - Math.ceil(round / 2) - 1)));
+  // Calculate bracket size
+  const bracketSize = Math.pow(2, winnersNumRounds);
+
+  // Track losers bracket structure by round
+  // Odd rounds (1, 3, 5...): play among existing losers bracket players (progression)
+  // Even rounds (2, 4, 6...): losers drop down from winners bracket (drop-down)
+  // Exception: Round 1 is special - it takes losers from winners round 1
+
+  let globalPosition = 0;
+
+  for (let losersRound = 1; losersRound <= losersNumRounds; losersRound++) {
+    // Calculate number of matches in this losers round
+    // This follows a specific pattern based on drop-down vs progression rounds
+    let numMatchesInRound: number;
+
+    if (losersRound === 1) {
+      // First losers round: half of first round losers play each other
+      numMatchesInRound = bracketSize / 4;
+    } else if (losersRound % 2 === 0) {
+      // Drop-down round: players from previous losers round vs drop-downs from winners
+      // Same number as previous round (losers from winners join)
+      const prevLosersRoundMatches = losersMatches.filter(m => m.round === losersRound - 1).length;
+      numMatchesInRound = prevLosersRoundMatches;
+    } else {
+      // Progression round: winners from previous round play each other
+      const prevLosersRoundMatches = losersMatches.filter(m => m.round === losersRound - 1).length;
+      numMatchesInRound = Math.max(1, Math.floor(prevLosersRoundMatches / 2));
+    }
+
+    // Ensure at least 1 match
+    numMatchesInRound = Math.max(1, numMatchesInRound);
 
     for (let i = 0; i < numMatchesInRound; i++) {
       losersMatches.push({
-        round,
-        position: losersPosition++,
+        round: losersRound,
+        position: globalPosition++,
         bracketSide: 'losers',
         status: 'pending',
       });
     }
   }
 
-  // Grand finals (winners bracket winner vs losers bracket winner)
+  // Grand finals: winners bracket champion vs losers bracket champion
   const grandFinals: BracketMatch = {
-    round: numRounds + 1,
+    round: 1,
     position: 0,
     bracketSide: 'grand_finals',
     status: 'pending',
   };
 
-  return [...winnersMatches, ...losersMatches, grandFinals];
+  // Bracket reset: if losers bracket winner wins grand finals
+  // (they now each have 1 loss, so play again for true champion)
+  const bracketReset: BracketMatch = {
+    round: 2,
+    position: 0,
+    bracketSide: 'grand_finals_reset',
+    status: 'pending',
+  };
+
+  return [...winnersMatches, ...losersMatches, grandFinals, bracketReset];
+}
+
+/**
+ * Link double elimination bracket matches after DB insertion
+ * Sets up nextMatchId (for winners) and loserNextMatchId (for losers going to losers bracket)
+ */
+async function linkDoubleEliminationBracket(
+  _tournamentId: string,
+  insertedMatches: Array<{ id: string; round: number; position: number; bracketSide: string | null }>
+): Promise<void> {
+  // Separate matches by bracket side
+  const winnersMatches = insertedMatches.filter(m => m.bracketSide === 'winners');
+  const losersMatches = insertedMatches.filter(m => m.bracketSide === 'losers');
+  const grandFinalsMatch = insertedMatches.find(m => m.bracketSide === 'grand_finals');
+  const bracketResetMatch = insertedMatches.find(m => m.bracketSide === 'grand_finals_reset');
+
+  if (!grandFinalsMatch || !bracketResetMatch) {
+    return; // Invalid bracket structure
+  }
+
+  const winnersNumRounds = Math.max(...winnersMatches.map(m => m.round));
+  const losersNumRounds = losersMatches.length > 0 ? Math.max(...losersMatches.map(m => m.round)) : 0;
+
+  // Group matches by round for easier lookup
+  const winnersByRound: Map<number, typeof winnersMatches> = new Map();
+  const losersByRound: Map<number, typeof losersMatches> = new Map();
+
+  winnersMatches.forEach(m => {
+    if (!winnersByRound.has(m.round)) winnersByRound.set(m.round, []);
+    winnersByRound.get(m.round)!.push(m);
+  });
+
+  losersMatches.forEach(m => {
+    if (!losersByRound.has(m.round)) losersByRound.set(m.round, []);
+    losersByRound.get(m.round)!.push(m);
+  });
+
+  // Sort matches within each round by position
+  winnersByRound.forEach(matches => matches.sort((a, b) => a.position - b.position));
+  losersByRound.forEach(matches => matches.sort((a, b) => a.position - b.position));
+
+  const updates: Array<{ id: string; nextMatchId?: string; loserNextMatchId?: string }> = [];
+
+  // Link winners bracket matches
+  for (let wr = 1; wr <= winnersNumRounds; wr++) {
+    const currentRoundMatches = winnersByRound.get(wr) || [];
+    const nextRoundMatches = winnersByRound.get(wr + 1) || [];
+
+    currentRoundMatches.forEach((match, idx) => {
+      let nextMatchId: string | undefined;
+      let loserNextMatchId: string | undefined;
+
+      // Winners advance to next winners round (or grand finals if finals)
+      if (wr === winnersNumRounds) {
+        // Winners finals -> grand finals
+        nextMatchId = grandFinalsMatch.id;
+      } else {
+        const nextMatchIdx = Math.floor(idx / 2);
+        nextMatchId = nextRoundMatches[nextMatchIdx]?.id;
+      }
+
+      // Losers drop to losers bracket
+      // WR1 losers go to LR1
+      // WR2 losers go to LR2 (drop-down round)
+      // WR3 losers go to LR4 (drop-down round)
+      // WRn losers go to LR(2*(n-1)) for n > 1, or LR1 for n = 1
+      if (losersNumRounds > 0) {
+        let loserLosersRound: number;
+        if (wr === 1) {
+          loserLosersRound = 1;
+        } else {
+          loserLosersRound = 2 * (wr - 1);
+        }
+
+        const losersRoundMatches = losersByRound.get(loserLosersRound) || [];
+
+        // Calculate which losers match this loser goes to
+        if (wr === 1) {
+          // WR1 losers: pair up (loser of match 0 vs loser of match 1, etc)
+          const loserMatchIdx = Math.floor(idx / 2);
+          loserNextMatchId = losersRoundMatches[loserMatchIdx]?.id;
+        } else {
+          // WRn (n > 1) losers drop into existing losers bracket matches
+          // They fill the "open slot" in drop-down rounds
+          loserNextMatchId = losersRoundMatches[idx % losersRoundMatches.length]?.id;
+        }
+      }
+
+      updates.push({
+        id: match.id,
+        nextMatchId,
+        loserNextMatchId,
+      });
+    });
+  }
+
+  // Link losers bracket matches
+  for (let lr = 1; lr <= losersNumRounds; lr++) {
+    const currentRoundMatches = losersByRound.get(lr) || [];
+    const nextRoundMatches = losersByRound.get(lr + 1) || [];
+
+    currentRoundMatches.forEach((match, idx) => {
+      let nextMatchId: string | undefined;
+
+      if (lr === losersNumRounds) {
+        // Losers finals -> grand finals
+        nextMatchId = grandFinalsMatch.id;
+      } else if ((lr + 1) % 2 === 0 || lr === 1) {
+        // Next round is a drop-down round - same number of matches
+        // Winners stay in same position (drop-down opponent fills other slot)
+        nextMatchId = nextRoundMatches[idx]?.id;
+      } else {
+        // Next round is a progression round - half the matches
+        const nextMatchIdx = Math.floor(idx / 2);
+        nextMatchId = nextRoundMatches[nextMatchIdx]?.id;
+      }
+
+      if (nextMatchId) {
+        updates.push({ id: match.id, nextMatchId });
+      }
+    });
+  }
+
+  // Link grand finals to bracket reset
+  updates.push({
+    id: grandFinalsMatch.id,
+    nextMatchId: bracketResetMatch.id,
+  });
+
+  // Apply all updates
+  for (const update of updates) {
+    if (update.nextMatchId || update.loserNextMatchId) {
+      await db
+        .update(tournamentBracketMatches)
+        .set({
+          nextMatchId: update.nextMatchId || null,
+          loserNextMatchId: update.loserNextMatchId || null,
+        })
+        .where(eq(tournamentBracketMatches.id, update.id));
+    }
+  }
 }
 
 /**
@@ -1121,6 +1349,11 @@ export async function tournamentRoutes(app: FastifyInstance) {
       )
       .returning();
 
+    // Link matches for double elimination bracket (set up nextMatchId and loserNextMatchId)
+    if (tournament.format === 'double_elimination') {
+      await linkDoubleEliminationBracket(tournamentId, insertedMatches);
+    }
+
     // Update tournament status
     await db
       .update(tournaments)
@@ -1196,6 +1429,301 @@ export async function tournamentRoutes(app: FastifyInstance) {
     return {
       ...updated,
       message: 'Tournament cancelled. Entry fees have been refunded.',
+    };
+  });
+
+  // POST /api/admin/tournaments/:id/bracket-matches/:matchId/result - Report bracket match result
+  app.post('/api/admin/tournaments/:id/bracket-matches/:matchId/result', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdmin(request)) {
+      throw new ForbiddenError('Admin access required');
+    }
+
+    const paramsSchema = z.object({
+      id: z.string().uuid(),
+      matchId: z.string().uuid(),
+    });
+
+    const bodySchema = z.object({
+      winnerId: z.string().uuid(),
+      score1: z.number().int().min(0).optional(),
+      score2: z.number().int().min(0).optional(),
+    });
+
+    const paramResult = paramsSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid parameters', { issues: paramResult.error.issues });
+    }
+
+    const bodyResult = bodySchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      throw new ValidationError('Invalid request body', { issues: bodyResult.error.issues });
+    }
+
+    const { id: tournamentId, matchId } = paramResult.data;
+    const { winnerId, score1, score2 } = bodyResult.data;
+
+    // Get tournament
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    if (!tournament) {
+      throw new NotFoundError('Tournament', tournamentId);
+    }
+
+    if (tournament.status !== 'in_progress') {
+      throw new ConflictError('Tournament is not in progress');
+    }
+
+    // Get the bracket match
+    const [bracketMatch] = await db
+      .select()
+      .from(tournamentBracketMatches)
+      .where(
+        and(
+          eq(tournamentBracketMatches.id, matchId),
+          eq(tournamentBracketMatches.tournamentId, tournamentId)
+        )
+      );
+
+    if (!bracketMatch) {
+      throw new NotFoundError('Bracket match', matchId);
+    }
+
+    if (bracketMatch.status === 'completed') {
+      throw new ConflictError('Match has already been completed');
+    }
+
+    if (bracketMatch.status === 'bye') {
+      throw new ConflictError('Cannot report result for a bye match');
+    }
+
+    // Validate winner is one of the participants
+    if (winnerId !== bracketMatch.participant1Id && winnerId !== bracketMatch.participant2Id) {
+      throw new ValidationError('Winner must be one of the match participants');
+    }
+
+    const loserId = winnerId === bracketMatch.participant1Id
+      ? bracketMatch.participant2Id
+      : bracketMatch.participant1Id;
+
+    // Update the bracket match with result
+    await db
+      .update(tournamentBracketMatches)
+      .set({
+        winnerId,
+        loserId,
+        score1,
+        score2,
+        status: 'completed',
+        completedAt: new Date(),
+      })
+      .where(eq(tournamentBracketMatches.id, matchId));
+
+    // Advance winner to next match
+    if (bracketMatch.nextMatchId) {
+      const [nextMatch] = await db
+        .select()
+        .from(tournamentBracketMatches)
+        .where(eq(tournamentBracketMatches.id, bracketMatch.nextMatchId));
+
+      if (nextMatch) {
+        // Determine which slot the winner fills in the next match
+        const updateField = nextMatch.participant1Id === null ? 'participant1Id' : 'participant2Id';
+        await db
+          .update(tournamentBracketMatches)
+          .set({ [updateField]: winnerId })
+          .where(eq(tournamentBracketMatches.id, bracketMatch.nextMatchId));
+      }
+    }
+
+    // Handle double elimination: send loser to losers bracket
+    if (tournament.format === 'double_elimination' && bracketMatch.loserNextMatchId && loserId) {
+      const [loserNextMatch] = await db
+        .select()
+        .from(tournamentBracketMatches)
+        .where(eq(tournamentBracketMatches.id, bracketMatch.loserNextMatchId));
+
+      if (loserNextMatch) {
+        // Determine which slot the loser fills in the losers bracket match
+        const updateField = loserNextMatch.participant1Id === null ? 'participant1Id' : 'participant2Id';
+        await db
+          .update(tournamentBracketMatches)
+          .set({ [updateField]: loserId })
+          .where(eq(tournamentBracketMatches.id, bracketMatch.loserNextMatchId));
+      }
+    }
+
+    // Mark loser as eliminated (but not if they're going to losers bracket)
+    if (loserId && !bracketMatch.loserNextMatchId) {
+      // Check if this is grand finals - special handling
+      if (bracketMatch.bracketSide === 'grand_finals') {
+        // In grand finals, if the winners bracket champion loses, they get one more chance (bracket reset)
+        // The loser goes to bracket reset match, not eliminated yet
+        // This is already handled by nextMatchId (grand finals -> bracket reset)
+      } else if (bracketMatch.bracketSide === 'grand_finals_reset') {
+        // Loser of bracket reset is eliminated (2nd place)
+        await db
+          .update(tournamentRegistrations)
+          .set({ eliminatedAt: new Date(), finalPlacement: 2 })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.userId, loserId)
+            )
+          );
+
+        // Winner is 1st place
+        await db
+          .update(tournamentRegistrations)
+          .set({ finalPlacement: 1 })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.userId, winnerId)
+            )
+          );
+
+        // Tournament is complete
+        await db
+          .update(tournaments)
+          .set({ status: 'completed', updatedAt: new Date() })
+          .where(eq(tournaments.id, tournamentId));
+      } else if (bracketMatch.bracketSide === 'losers') {
+        // Loser in losers bracket is eliminated (they've lost twice now)
+        await db
+          .update(tournamentRegistrations)
+          .set({ eliminatedAt: new Date() })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.userId, loserId)
+            )
+          );
+      }
+    }
+
+    // Check if this was grand finals and winner was from winners bracket (skip bracket reset)
+    if (bracketMatch.bracketSide === 'grand_finals') {
+      // Determine if winner came from winners bracket (they haven't lost yet)
+      // If the winners bracket champion wins grand finals, they win the tournament (no bracket reset needed)
+      // We need to check who came from which bracket - this is tracked by looking at the losers bracket final
+      const [losersFinalsMatch] = await db
+        .select()
+        .from(tournamentBracketMatches)
+        .where(
+          and(
+            eq(tournamentBracketMatches.tournamentId, tournamentId),
+            eq(tournamentBracketMatches.bracketSide, 'losers'),
+            eq(tournamentBracketMatches.status, 'completed')
+          )
+        )
+        .orderBy(desc(tournamentBracketMatches.round))
+        .limit(1);
+
+      const losersChampion = losersFinalsMatch?.winnerId;
+      const winnersChampion = losersChampion === winnerId ? loserId : winnerId;
+
+      // If winners bracket champion won, tournament is over (no bracket reset needed)
+      if (winnerId === winnersChampion) {
+        // Winner is 1st place
+        await db
+          .update(tournamentRegistrations)
+          .set({ finalPlacement: 1 })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.userId, winnerId)
+            )
+          );
+
+        // Loser is 2nd place
+        await db
+          .update(tournamentRegistrations)
+          .set({ eliminatedAt: new Date(), finalPlacement: 2 })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.userId, loserId!)
+            )
+          );
+
+        // Mark bracket reset as not needed (skip it)
+        if (bracketMatch.nextMatchId) {
+          await db
+            .update(tournamentBracketMatches)
+            .set({ status: 'bye' }) // Using 'bye' to indicate skipped
+            .where(eq(tournamentBracketMatches.id, bracketMatch.nextMatchId));
+        }
+
+        // Tournament is complete
+        await db
+          .update(tournaments)
+          .set({ status: 'completed', updatedAt: new Date() })
+          .where(eq(tournaments.id, tournamentId));
+      } else {
+        // Losers bracket champion won - need bracket reset
+        // Both players now have 1 loss, advance both to bracket reset
+        if (bracketMatch.nextMatchId) {
+          await db
+            .update(tournamentBracketMatches)
+            .set({
+              participant1Id: winnersChampion,
+              participant2Id: losersChampion,
+            })
+            .where(eq(tournamentBracketMatches.id, bracketMatch.nextMatchId));
+        }
+      }
+    }
+
+    // For single elimination, check if tournament is complete
+    if (tournament.format === 'single_elimination') {
+      // Check if this was the finals match
+      const winnersNumRounds = await db
+        .select({ maxRound: sql<number>`MAX(${tournamentBracketMatches.round})` })
+        .from(tournamentBracketMatches)
+        .where(eq(tournamentBracketMatches.tournamentId, tournamentId));
+
+      if (bracketMatch.round === winnersNumRounds[0]?.maxRound) {
+        // Finals match completed - tournament is done
+        await db
+          .update(tournamentRegistrations)
+          .set({ finalPlacement: 1 })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.userId, winnerId)
+            )
+          );
+
+        if (loserId) {
+          await db
+            .update(tournamentRegistrations)
+            .set({ eliminatedAt: new Date(), finalPlacement: 2 })
+            .where(
+              and(
+                eq(tournamentRegistrations.tournamentId, tournamentId),
+                eq(tournamentRegistrations.userId, loserId)
+              )
+            );
+        }
+
+        await db
+          .update(tournaments)
+          .set({ status: 'completed', updatedAt: new Date() })
+          .where(eq(tournaments.id, tournamentId));
+      }
+    }
+
+    return {
+      message: 'Match result recorded',
+      matchId,
+      winnerId,
+      loserId,
+      bracketSide: bracketMatch.bracketSide,
+      nextMatchId: bracketMatch.nextMatchId,
+      loserNextMatchId: bracketMatch.loserNextMatchId,
     };
   });
 
