@@ -121,3 +121,74 @@ export function useReleaseCredits() {
     },
   });
 }
+
+/**
+ * Export transaction history as CSV or JSON
+ */
+export async function exportTransactionHistory(
+  filters: CreditHistoryFilters & { format?: 'csv' | 'json' } = {}
+): Promise<void> {
+  const queryParams = new URLSearchParams();
+
+  if (filters.type) queryParams.set('type', filters.type);
+  if (filters.startDate) queryParams.set('startDate', filters.startDate);
+  if (filters.endDate) queryParams.set('endDate', filters.endDate);
+  queryParams.set('format', filters.format || 'csv');
+
+  const queryString = queryParams.toString();
+  const endpoint = `/api/credits/history/export${queryString ? `?${queryString}` : ''}`;
+
+  // Get auth token
+  let authToken: string | null = null;
+  if (typeof window !== 'undefined') {
+    const authData = localStorage.getItem('reporivals-auth');
+    if (authData) {
+      try {
+        const { state } = JSON.parse(authData);
+        if (state?.accessToken) {
+          authToken = state.accessToken;
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  const headers: HeadersInit = {};
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3010';
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to export transactions');
+  }
+
+  // Get the filename from Content-Disposition header or use default
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = `reporivals-transactions-${new Date().toISOString().split('T')[0]}`;
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="(.+?)"/);
+    if (match) {
+      filename = match[1];
+    }
+  } else {
+    filename += filters.format === 'json' ? '.json' : '.csv';
+  }
+
+  // Download the file
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}

@@ -358,6 +358,151 @@ export async function creditRoutes(app: FastifyInstance) {
   );
 
   /**
+   * GET /api/credits/history/export
+   * Export all transaction history as CSV
+   */
+  app.get('/api/credits/history/export', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    // Parse optional filters from query
+    const queryResult = z.object({
+      type: z.enum([
+        'purchase',
+        'earn',
+        'stake_hold',
+        'stake_release',
+        'transfer',
+        'fee',
+        'refund',
+        'redemption',
+      ]).optional(),
+      startDate: z.string().datetime().optional(),
+      endDate: z.string().datetime().optional(),
+      format: z.enum(['csv', 'json']).default('csv'),
+    }).safeParse(request.query);
+
+    if (!queryResult.success) {
+      throw new ValidationError('Invalid query parameters', {
+        issues: queryResult.error.issues,
+      });
+    }
+
+    const { type, startDate, endDate, format } = queryResult.data;
+
+    // Get account for user
+    const account = await getOrCreateCreditAccount(userId);
+
+    // Build WHERE conditions
+    const conditions = [eq(creditLedgerEntries.accountId, account.id)];
+
+    if (type) {
+      conditions.push(eq(creditLedgerEntries.type, type));
+    }
+
+    if (startDate) {
+      conditions.push(gte(creditLedgerEntries.createdAt, new Date(startDate)));
+    }
+
+    if (endDate) {
+      conditions.push(lte(creditLedgerEntries.createdAt, new Date(endDate)));
+    }
+
+    // Get all transactions (no limit for export)
+    const transactions = await db
+      .select({
+        id: creditLedgerEntries.id,
+        type: creditLedgerEntries.type,
+        amount: creditLedgerEntries.amount,
+        matchId: creditLedgerEntries.matchId,
+        metadataJson: creditLedgerEntries.metadataJson,
+        createdAt: creditLedgerEntries.createdAt,
+      })
+      .from(creditLedgerEntries)
+      .where(and(...conditions))
+      .orderBy(desc(creditLedgerEntries.createdAt));
+
+    // Get match details for transactions with matchId
+    const matchIds = transactions
+      .map((t) => t.matchId)
+      .filter((id): id is string => id !== null);
+
+    let matchDetailsMap: Map<string, { title: string; slug: string }> = new Map();
+
+    if (matchIds.length > 0) {
+      const matchDetails = await db
+        .select({
+          matchId: matches.id,
+          challengeTitle: challenges.title,
+          challengeSlug: challenges.slug,
+        })
+        .from(matches)
+        .innerJoin(challengeVersions, eq(matches.challengeVersionId, challengeVersions.id))
+        .innerJoin(challenges, eq(challengeVersions.challengeId, challenges.id))
+        .where(sql`${matches.id} IN ${matchIds}`);
+
+      for (const detail of matchDetails) {
+        matchDetailsMap.set(detail.matchId, {
+          title: detail.challengeTitle,
+          slug: detail.challengeSlug,
+        });
+      }
+    }
+
+    // Transform transactions
+    const exportData = transactions.map((transaction) => {
+      const matchDetail = transaction.matchId
+        ? matchDetailsMap.get(transaction.matchId)
+        : null;
+      const metadata = (transaction.metadataJson || {}) as Record<string, unknown>;
+
+      return {
+        id: transaction.id,
+        date: transaction.createdAt.toISOString(),
+        type: transaction.type,
+        amount: transaction.amount,
+        description: getTransactionDescription(
+          transaction.type,
+          metadata,
+          matchDetail?.title
+        ),
+        matchId: transaction.matchId || '',
+        challenge: matchDetail?.title || '',
+      };
+    });
+
+    if (format === 'json') {
+      reply.header('Content-Type', 'application/json');
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="reporivals-transactions-${new Date().toISOString().split('T')[0]}.json"`
+      );
+      return { transactions: exportData };
+    }
+
+    // CSV format
+    const csvHeaders = ['ID', 'Date', 'Type', 'Amount', 'Description', 'Match ID', 'Challenge'];
+    const csvRows = exportData.map((t) => [
+      t.id,
+      t.date,
+      t.type,
+      String(t.amount),
+      `"${t.description.replace(/"/g, '""')}"`,
+      t.matchId,
+      `"${t.challenge.replace(/"/g, '""')}"`,
+    ].join(','));
+
+    const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
+
+    reply.header('Content-Type', 'text/csv');
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename="reporivals-transactions-${new Date().toISOString().split('T')[0]}.csv"`
+    );
+
+    return csvContent;
+  });
+
+  /**
    * GET /api/credits/holds
    * Returns paginated list of credit holds with match details
    */

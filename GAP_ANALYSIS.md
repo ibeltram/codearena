@@ -55,7 +55,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | Spec Feature | Status | Details |
 |--------------|--------|---------|
 | **Profile Editing** | STUB | Dialog shows "coming soon" |
-| **Transaction Export** | STUB | Button exists, no handler |
+| **Transaction Export** | ✅ COMPLETE | Export button downloads CSV with all transactions |
 | **GitHub Repo Submission** | MOCK | API returns mock GitHub metadata |
 | **Real S3 Presigned URLs** | MOCK | Returns placeholder URLs |
 | **Secret Scan on Upload** | MOCK | Returns mock scan result |

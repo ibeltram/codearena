@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -8,6 +8,7 @@ import {
   Download,
   Filter,
   History,
+  Loader2,
   Lock,
   MinusCircle,
   RotateCcw,
@@ -26,7 +27,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from '@/components/ui/select';
-import { useCreditHistory } from '@/hooks';
+import { useCreditHistory, exportTransactionHistory } from '@/hooks';
 import {
   CreditTransaction,
   CreditTransactionType,
@@ -158,6 +159,8 @@ export function TransactionHistory() {
     page: 1,
     limit: ITEMS_PER_PAGE,
   });
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data, isLoading, isError, isFetching } = useCreditHistory(filters);
 
@@ -172,6 +175,22 @@ export function TransactionHistory() {
   const handlePageChange = (page: number) => {
     setFilters((prev) => ({ ...prev, page }));
   };
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      await exportTransactionHistory({
+        type: filters.type,
+        format: 'csv',
+      });
+    } catch (error) {
+      setExportError('Failed to export transactions. Please try again.');
+      console.error('Export error:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [filters.type]);
 
   return (
     <Card>
@@ -197,13 +216,29 @@ export function TransactionHistory() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
             Export
           </Button>
         </div>
       </CardHeader>
       <CardContent>
+        {/* Export error */}
+        {exportError && (
+          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+            <p className="text-sm text-destructive">{exportError}</p>
+          </div>
+        )}
+
         {/* Loading state */}
         {isLoading && (
           <div className="space-y-0">

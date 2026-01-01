@@ -66,6 +66,7 @@ export {
   usePurchaseCredits,
   useStakeCredits,
   useReleaseCredits,
+  exportTransactionHistory,
   walletKeys,
 } from './use-wallet';
 export {
