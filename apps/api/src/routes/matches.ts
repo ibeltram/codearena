@@ -137,6 +137,36 @@ function canJoinMatch(status: string): boolean {
   return status === 'created' || status === 'open';
 }
 
+// Helper to check if a user is banned or suspended
+async function checkUserCanCompete(userId: string): Promise<{ allowed: boolean; reason?: string }> {
+  const [user] = await db
+    .select({
+      isBanned: users.isBanned,
+      suspendedUntil: users.suspendedUntil,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) {
+    return { allowed: false, reason: 'User not found' };
+  }
+
+  if (user.isBanned) {
+    return { allowed: false, reason: 'Your account has been permanently banned. You cannot participate in matches.' };
+  }
+
+  if (user.suspendedUntil && new Date(user.suspendedUntil) > new Date()) {
+    const suspendedUntilDate = new Date(user.suspendedUntil);
+    return {
+      allowed: false,
+      reason: `Your account is temporarily suspended until ${suspendedUntilDate.toISOString()}. You cannot participate in matches during this time.`,
+    };
+  }
+
+  return { allowed: true };
+}
+
 // Helper to check if match can transition to ready
 function canReadyUp(status: string): boolean {
   return status === 'matched';
@@ -321,6 +351,12 @@ export async function matchRoutes(app: FastifyInstance) {
   app.post('/api/matches', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = getUserId(request);
 
+    // Check if user can compete (not banned/suspended)
+    const competitionCheck = await checkUserCanCompete(userId);
+    if (!competitionCheck.allowed) {
+      throw new ForbiddenError(competitionCheck.reason || 'You cannot create matches at this time');
+    }
+
     const bodyResult = createMatchSchema.safeParse(request.body);
 
     if (!bodyResult.success) {
@@ -427,6 +463,12 @@ export async function matchRoutes(app: FastifyInstance) {
   // POST /api/matches/queue - Join ranked matchmaking queue
   app.post('/api/matches/queue', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = getUserId(request);
+
+    // Check if user can compete (not banned/suspended)
+    const competitionCheck = await checkUserCanCompete(userId);
+    if (!competitionCheck.allowed) {
+      throw new ForbiddenError(competitionCheck.reason || 'You cannot join the queue at this time');
+    }
 
     const bodyResult = joinQueueSchema.safeParse(request.body);
 
@@ -602,6 +644,12 @@ export async function matchRoutes(app: FastifyInstance) {
   // POST /api/matches/:id/join - Join an existing match by invite
   app.post('/api/matches/:id/join', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = getUserId(request);
+
+    // Check if user can compete (not banned/suspended)
+    const competitionCheck = await checkUserCanCompete(userId);
+    if (!competitionCheck.allowed) {
+      throw new ForbiddenError(competitionCheck.reason || 'You cannot join matches at this time');
+    }
 
     const paramResult = matchIdParamSchema.safeParse(request.params);
 

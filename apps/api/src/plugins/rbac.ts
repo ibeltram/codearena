@@ -42,7 +42,11 @@ async function loadUserRoles(request: FastifyRequest, reply: FastifyReply): Prom
 
   // Fetch user roles from database
   const [user] = await db
-    .select({ roles: users.roles, isBanned: users.isBanned })
+    .select({
+      roles: users.roles,
+      isBanned: users.isBanned,
+      suspendedUntil: users.suspendedUntil,
+    })
     .from(users)
     .where(eq(users.id, request.user.id))
     .limit(1);
@@ -57,7 +61,18 @@ async function loadUserRoles(request: FastifyRequest, reply: FastifyReply): Prom
   if (user.isBanned) {
     return reply.status(403).send({
       error: 'forbidden',
-      message: 'Account has been suspended',
+      message: 'Account has been permanently banned',
+      code: 'ACCOUNT_BANNED',
+    });
+  }
+
+  // Check if user is currently suspended
+  if (user.suspendedUntil && new Date(user.suspendedUntil) > new Date()) {
+    return reply.status(403).send({
+      error: 'forbidden',
+      message: 'Account is temporarily suspended',
+      code: 'ACCOUNT_SUSPENDED',
+      suspendedUntil: user.suspendedUntil,
     });
   }
 

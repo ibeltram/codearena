@@ -9,17 +9,21 @@
  * - PATCH /api/admin/users/:id/roles - Update user roles
  * - POST /api/admin/users/:id/ban - Ban a user
  * - POST /api/admin/users/:id/unban - Unban a user
+ * - POST /api/admin/users/:id/suspend - Suspend a user temporarily
+ * - POST /api/admin/users/:id/unsuspend - Remove user suspension
+ * - POST /api/admin/users/:id/warn - Issue a warning to a user
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { eq, desc, count, ilike, or, and } from 'drizzle-orm';
+import { eq, desc, count, ilike, or, and, inArray } from 'drizzle-orm';
 
 import { db, schema } from '../../db';
 import { NotFoundError, ValidationError, ForbiddenError } from '../../lib/errors';
 import { type UserRole } from '../../plugins';
+import { releaseStakeHold } from '../../lib/staking';
 
-const { users, eventsAudit } = schema;
+const { users, eventsAudit, matches, matchParticipants } = schema;
 
 // Request parameter schemas
 const userIdParamSchema = z.object({
@@ -41,6 +45,17 @@ const updateRolesSchema = z.object({
 
 // Ban body schema
 const banUserSchema = z.object({
+  reason: z.string().min(5).max(500),
+});
+
+// Suspend body schema
+const suspendUserSchema = z.object({
+  reason: z.string().min(5).max(500),
+  durationHours: z.number().int().min(1).max(8760), // 1 hour to 1 year
+});
+
+// Warn body schema
+const warnUserSchema = z.object({
   reason: z.string().min(5).max(500),
 });
 
@@ -285,10 +300,75 @@ export async function adminUserRoutes(app: FastifyInstance) {
       throw new ForbiddenError('Cannot ban an admin user');
     }
 
+    // Find active matches where user is a participant
+    const activeMatchStatuses = ['created', 'open', 'matched', 'in_progress', 'submission_locked'];
+    const userMatches = await db
+      .select({
+        matchId: matchParticipants.matchId,
+        matchStatus: matches.status,
+      })
+      .from(matchParticipants)
+      .innerJoin(matches, eq(matchParticipants.matchId, matches.id))
+      .where(
+        and(
+          eq(matchParticipants.userId, userId),
+          inArray(matches.status, activeMatchStatuses as any)
+        )
+      );
+
+    const cancelledMatches: string[] = [];
+    const refundedParticipants: { matchId: string; userId: string }[] = [];
+
+    // Cancel active matches and refund stakes
+    for (const { matchId, matchStatus } of userMatches) {
+      // Get all participants in this match
+      const participants = await db
+        .select()
+        .from(matchParticipants)
+        .where(eq(matchParticipants.matchId, matchId));
+
+      // Release stake holds for all participants (refund)
+      for (const participant of participants) {
+        try {
+          await releaseStakeHold(participant.userId, matchId, 'cancelled');
+          refundedParticipants.push({ matchId, userId: participant.userId });
+        } catch (err) {
+          // Hold may not exist if match hadn't required stakes yet
+          console.warn(`Could not release stake for user ${participant.userId} in match ${matchId}:`, err);
+        }
+      }
+
+      // Cancel the match
+      await db
+        .update(matches)
+        .set({ status: 'archived' })
+        .where(eq(matches.id, matchId));
+
+      cancelledMatches.push(matchId);
+
+      // Create audit event for match cancellation
+      await db.insert(eventsAudit).values({
+        actorUserId: adminId,
+        eventType: 'match_cancelled_moderation',
+        entityType: 'match',
+        entityId: matchId,
+        payloadJson: {
+          reason: 'User banned',
+          bannedUserId: userId,
+          previousStatus: matchStatus,
+          refundedParticipants: participants.map(p => p.userId),
+        },
+      });
+    }
+
     // Ban user
     const [updatedUser] = await db
       .update(users)
-      .set({ isBanned: true })
+      .set({
+        isBanned: true,
+        banReason: reason,
+        bannedAt: new Date(),
+      })
       .where(eq(users.id, userId))
       .returning();
 
@@ -300,6 +380,8 @@ export async function adminUserRoutes(app: FastifyInstance) {
       entityId: userId,
       payloadJson: {
         reason,
+        cancelledMatches,
+        refundedParticipants,
       },
     });
 
@@ -307,6 +389,8 @@ export async function adminUserRoutes(app: FastifyInstance) {
       id: updatedUser.id,
       isBanned: updatedUser.isBanned,
       message: 'User has been banned',
+      cancelledMatches,
+      refundedParticipants: refundedParticipants.length,
     };
   });
 
@@ -344,7 +428,11 @@ export async function adminUserRoutes(app: FastifyInstance) {
     // Unban user
     const [updatedUser] = await db
       .update(users)
-      .set({ isBanned: false })
+      .set({
+        isBanned: false,
+        banReason: null,
+        bannedAt: null,
+      })
       .where(eq(users.id, userId))
       .returning();
 
@@ -361,6 +449,210 @@ export async function adminUserRoutes(app: FastifyInstance) {
       id: updatedUser.id,
       isBanned: updatedUser.isBanned,
       message: 'User has been unbanned',
+    };
+  });
+
+  // POST /api/admin/users/:id/suspend - Temporarily suspend a user
+  app.post('/api/admin/users/:id/suspend', async (request: FastifyRequest, reply: FastifyReply) => {
+    const adminId = request.user!.id;
+
+    const paramResult = userIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid user ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const bodyResult = suspendUserSchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      throw new ValidationError('Invalid request body', {
+        issues: bodyResult.error.issues,
+      });
+    }
+
+    const { id: userId } = paramResult.data;
+    const { reason, durationHours } = bodyResult.data;
+
+    // Prevent self-suspension
+    if (userId === adminId) {
+      throw new ForbiddenError('Cannot suspend yourself');
+    }
+
+    // Get user
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user) {
+      throw new NotFoundError('User', userId);
+    }
+
+    // Prevent suspending admins
+    if (user.roles?.includes('admin')) {
+      throw new ForbiddenError('Cannot suspend an admin user');
+    }
+
+    // Check if already banned (more severe action)
+    if (user.isBanned) {
+      return {
+        id: user.id,
+        message: 'User is already banned (permanent). Use unban first if you want to suspend instead.',
+      };
+    }
+
+    // Calculate suspension end time
+    const suspendedUntil = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+
+    // Suspend user
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        suspendedUntil,
+        suspensionReason: reason,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    // Create audit event
+    await db.insert(eventsAudit).values({
+      actorUserId: adminId,
+      eventType: 'user_suspended',
+      entityType: 'user',
+      entityId: userId,
+      payloadJson: {
+        reason,
+        durationHours,
+        suspendedUntil: suspendedUntil.toISOString(),
+      },
+    });
+
+    return {
+      id: updatedUser.id,
+      suspendedUntil: updatedUser.suspendedUntil,
+      message: `User has been suspended until ${suspendedUntil.toISOString()}`,
+    };
+  });
+
+  // POST /api/admin/users/:id/unsuspend - Remove user suspension
+  app.post('/api/admin/users/:id/unsuspend', async (request: FastifyRequest, reply: FastifyReply) => {
+    const adminId = request.user!.id;
+
+    const paramResult = userIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid user ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id: userId } = paramResult.data;
+
+    // Get user
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user) {
+      throw new NotFoundError('User', userId);
+    }
+
+    // Check if user is not suspended
+    if (!user.suspendedUntil || new Date(user.suspendedUntil) <= new Date()) {
+      return {
+        id: user.id,
+        message: 'User is not currently suspended',
+      };
+    }
+
+    // Remove suspension
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        suspendedUntil: null,
+        suspensionReason: null,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    // Create audit event
+    await db.insert(eventsAudit).values({
+      actorUserId: adminId,
+      eventType: 'user_unsuspended',
+      entityType: 'user',
+      entityId: userId,
+      payloadJson: {
+        previousSuspendedUntil: user.suspendedUntil?.toISOString(),
+      },
+    });
+
+    return {
+      id: updatedUser.id,
+      message: 'User suspension has been removed',
+    };
+  });
+
+  // POST /api/admin/users/:id/warn - Issue a warning to a user
+  app.post('/api/admin/users/:id/warn', async (request: FastifyRequest, reply: FastifyReply) => {
+    const adminId = request.user!.id;
+
+    const paramResult = userIdParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid user ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const bodyResult = warnUserSchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      throw new ValidationError('Invalid request body', {
+        issues: bodyResult.error.issues,
+      });
+    }
+
+    const { id: userId } = paramResult.data;
+    const { reason } = bodyResult.data;
+
+    // Get user
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user) {
+      throw new NotFoundError('User', userId);
+    }
+
+    // Increment warning count
+    const newWarningCount = (user.warningCount || 0) + 1;
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        warningCount: newWarningCount,
+        lastWarningAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    // Create audit event
+    await db.insert(eventsAudit).values({
+      actorUserId: adminId,
+      eventType: 'user_warned',
+      entityType: 'user',
+      entityId: userId,
+      payloadJson: {
+        reason,
+        warningNumber: newWarningCount,
+      },
+    });
+
+    // TODO: Send email notification to user about the warning
+
+    return {
+      id: updatedUser.id,
+      warningCount: updatedUser.warningCount,
+      message: `Warning issued to user. Total warnings: ${newWarningCount}`,
     };
   });
 }

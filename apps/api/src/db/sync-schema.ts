@@ -536,6 +536,75 @@ async function syncSchema() {
     `);
     console.info('✅ Created tables');
 
+    // Create user_reports table
+    await pool.query(`
+      DO $$ BEGIN
+        CREATE TYPE user_report_reason AS ENUM('cheating', 'harassment', 'inappropriate_content', 'spam', 'other');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;
+
+      DO $$ BEGIN
+        CREATE TYPE user_report_status AS ENUM('pending', 'in_review', 'resolved', 'dismissed');
+      EXCEPTION WHEN duplicate_object THEN null;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS user_reports (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        reporter_user_id uuid NOT NULL REFERENCES users(id),
+        reported_user_id uuid NOT NULL REFERENCES users(id),
+        reason user_report_reason NOT NULL,
+        description text NOT NULL,
+        evidence_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+        status user_report_status DEFAULT 'pending' NOT NULL,
+        reviewed_by_user_id uuid REFERENCES users(id),
+        review_notes text,
+        resolved_at timestamp with time zone,
+        created_at timestamp with time zone DEFAULT now() NOT NULL,
+        updated_at timestamp with time zone DEFAULT now() NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS user_reports_reporter_user_id_idx ON user_reports(reporter_user_id);
+      CREATE INDEX IF NOT EXISTS user_reports_reported_user_id_idx ON user_reports(reported_user_id);
+      CREATE INDEX IF NOT EXISTS user_reports_status_idx ON user_reports(status);
+      CREATE INDEX IF NOT EXISTS user_reports_created_at_idx ON user_reports(created_at);
+    `);
+    console.info('✅ Created user_reports table');
+
+    // Add moderation enforcement columns to users table
+    await pool.query(`
+      -- Add ban details
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS ban_reason varchar(500);
+
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS banned_at timestamp with time zone;
+
+      -- Add suspension fields (temporary restriction)
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS suspended_until timestamp with time zone;
+
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS suspension_reason varchar(500);
+
+      -- Add warning tracking
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS warning_count integer DEFAULT 0 NOT NULL;
+
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS last_warning_at timestamp with time zone;
+
+      -- Add GDPR soft delete fields (if not exists)
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS deletion_requested_at timestamp with time zone;
+
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS deletion_scheduled_at timestamp with time zone;
+
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS deleted_at timestamp with time zone;
+    `);
+    console.info('✅ Added moderation enforcement columns to users');
+
     // Add new columns for session management (refresh token reuse detection)
     await pool.query(`
       -- Add previous_token_hash for refresh token reuse detection

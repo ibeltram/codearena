@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, jsonb, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, jsonb, pgEnum, integer } from 'drizzle-orm/pg-core';
 
 // User roles enum
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin', 'moderator']);
@@ -13,6 +13,14 @@ export const users = pgTable('users', {
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   roles: userRoleEnum('roles').array().notNull().default(['user']),
   isBanned: boolean('is_banned').notNull().default(false),
+  banReason: varchar('ban_reason', { length: 500 }),
+  bannedAt: timestamp('banned_at', { withTimezone: true }),
+  // Suspension fields (temporary restriction)
+  suspendedUntil: timestamp('suspended_until', { withTimezone: true }),
+  suspensionReason: varchar('suspension_reason', { length: 500 }),
+  // Warning tracking
+  warningCount: integer('warning_count').notNull().default(0),
+  lastWarningAt: timestamp('last_warning_at', { withTimezone: true }),
   isVerified: boolean('is_verified').notNull().default(false),
   preferences: jsonb('preferences').notNull().default({}),
   // GDPR soft delete fields
