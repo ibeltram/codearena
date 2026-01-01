@@ -28,6 +28,14 @@ import {
   type ScoringResult,
   type WinnerDeterminationResult,
 } from '../lib/scoring-engine';
+import {
+  joinQueue,
+  findMatch,
+  executeMatch,
+  isUserInQueue,
+  removeUserFromQueues,
+  getQueueStats,
+} from '../lib/matchmaking';
 
 const {
   matches,
@@ -471,7 +479,7 @@ export async function matchRoutes(app: FastifyInstance) {
     });
   });
 
-  // POST /api/matches/queue - Join ranked matchmaking queue
+  // POST /api/matches/queue - Join ranked matchmaking queue (Redis-based)
   app.post('/api/matches/queue', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = getUserId(request);
 
@@ -491,7 +499,13 @@ export async function matchRoutes(app: FastifyInstance) {
 
     const { challengeVersionId, category, difficulty, stakeAmount } = bodyResult.data;
 
-    // Check if user is already in a match queue or active match
+    // Check if user is already in the Redis queue
+    const existingQueueEntry = await isUserInQueue(userId);
+    if (existingQueueEntry) {
+      throw new ConflictError('Already in matchmaking queue');
+    }
+
+    // Check if user is already in an active match
     const existingParticipation = await db
       .select({
         matchId: matchParticipants.matchId,
@@ -511,7 +525,7 @@ export async function matchRoutes(app: FastifyInstance) {
       );
 
     if (existingParticipation.length > 0) {
-      throw new ConflictError('Already in an active match or queue');
+      throw new ConflictError('Already in an active match');
     }
 
     // Validate stake cap based on rating if stake > 0
@@ -537,129 +551,324 @@ export async function matchRoutes(app: FastifyInstance) {
       }
     }
 
-    // Build conditions to find an open ranked match
-    const matchConditions = [
-      eq(matches.status, 'open'),
-      eq(matches.mode, 'ranked'),
-    ];
+    // Add player to Redis queue
+    const queueEntry = await joinQueue(userId, {
+      challengeVersionId,
+      category,
+      difficulty,
+      stakeAmount,
+    });
 
-    // If specific challenge version requested
-    if (challengeVersionId) {
-      matchConditions.push(eq(matches.challengeVersionId, challengeVersionId));
-    }
+    // Try to find a match immediately
+    const matchResult = await findMatch(queueEntry);
 
-    // Try to find an existing open ranked match
-    // In production, this would use a more sophisticated matching algorithm
-    // considering rating, stake amount, category preferences, etc.
-    const [openMatch] = await db
-      .select({
-        id: matches.id,
-        challengeVersionId: matches.challengeVersionId,
-        status: matches.status,
-      })
-      .from(matches)
-      .where(and(...matchConditions))
-      .limit(1);
+    if (matchResult.matched && matchResult.matchedWith) {
+      // Found an opponent! Execute the match
+      const opponent = matchResult.matchedWith;
+      const effectiveStake = matchResult.effectiveStake || 0;
 
-    if (openMatch) {
-      // Join existing match
-      const [participant] = await db
-        .insert(matchParticipants)
+      // Remove both players from queue atomically
+      const execResult = await executeMatch(queueEntry, opponent);
+      if (!execResult.success) {
+        // Failed to execute match (race condition), stay in queue
+        return reply.status(202).send({
+          matched: false,
+          queueId: queueEntry.queueId,
+          rating: queueEntry.rating,
+          tier: queueEntry.tier,
+          stakeCap: queueEntry.stakeCap,
+          message: 'Waiting in queue for opponent... (match attempt failed, retrying)',
+        });
+      }
+
+      // Find a challenge version for the match
+      let versionToUse = challengeVersionId || opponent.challengeVersionId;
+
+      if (!versionToUse) {
+        // Find a random published challenge matching criteria
+        const versionConditions = [eq(challenges.isPublished, true)];
+
+        const effectiveCategory = category || opponent.category;
+        const effectiveDifficulty = difficulty || opponent.difficulty;
+
+        if (effectiveCategory) {
+          versionConditions.push(eq(challenges.category, effectiveCategory));
+        }
+        if (effectiveDifficulty) {
+          versionConditions.push(eq(challenges.difficulty, effectiveDifficulty));
+        }
+
+        const [randomVersion] = await db
+          .select({ id: challengeVersions.id })
+          .from(challengeVersions)
+          .innerJoin(challenges, eq(challengeVersions.challengeId, challenges.id))
+          .where(and(...versionConditions))
+          .orderBy(desc(challengeVersions.publishedAt))
+          .limit(1);
+
+        if (!randomVersion) {
+          // No challenge found - put players back in queue (edge case)
+          await joinQueue(userId, { challengeVersionId, category, difficulty, stakeAmount });
+          await joinQueue(opponent.userId, {
+            challengeVersionId: opponent.challengeVersionId,
+            category: opponent.category,
+            difficulty: opponent.difficulty,
+            stakeAmount: opponent.requestedStake,
+          });
+          throw new NotFoundError('No matching challenges found');
+        }
+
+        versionToUse = randomVersion.id;
+      }
+
+      // Create match in database
+      const [newMatch] = await db
+        .insert(matches)
         .values({
-          matchId: openMatch.id,
-          userId,
-          seat: 'B',
+          challengeVersionId: versionToUse,
+          status: 'matched', // Skip 'open' since we have both players
+          mode: 'ranked',
+          createdBy: userId,
         })
         .returning();
 
-      // Create stake hold if needed
+      // Add both participants
+      await db.insert(matchParticipants).values([
+        { matchId: newMatch.id, userId, seat: 'A' },
+        { matchId: newMatch.id, userId: opponent.userId, seat: 'B' },
+      ]);
+
+      // Create stake holds for both players using the effective stake
       let hold = null;
-      if (stakeAmount > 0 && creditAccount) {
-        hold = await createStakeHold(creditAccount.id, openMatch.id, stakeAmount);
-      }
-
-      // Use state machine to transition to 'matched'
-      const transitionResult = await transitionMatch(openMatch.id, 'matched', {
-        matchId: openMatch.id,
-        userId,
-        reason: 'opponent_joined_queue',
-      });
-
-      if (!transitionResult.success) {
-        throw new ConflictError(transitionResult.error || 'Failed to match');
+      if (effectiveStake > 0) {
+        if (creditAccount) {
+          hold = await createStakeHold(creditAccount.id, newMatch.id, effectiveStake);
+        }
+        // Create hold for opponent too
+        const opponentAccount = await getOrCreateCreditAccount(opponent.userId);
+        if (opponentAccount.balanceAvailable >= effectiveStake) {
+          await createStakeHold(opponentAccount.id, newMatch.id, effectiveStake);
+        }
       }
 
       return reply.status(200).send({
         matched: true,
-        matchId: openMatch.id,
-        seat: 'B',
+        matchId: newMatch.id,
+        seat: 'A',
+        opponentRating: opponent.rating,
+        opponentTier: opponent.tier,
+        effectiveStake,
+        ratingDifference: Math.abs(queueEntry.rating - opponent.rating),
         message: 'Matched with opponent! Both players need to ready up.',
         stakeHold: hold ? { id: hold.id, amount: hold.amountReserved } : null,
       });
     }
 
-    // No match found - need to find a challenge version to create a new match
-    let versionToUse = challengeVersionId;
+    // No match found - player is now in Redis queue waiting
+    return reply.status(202).send({
+      matched: false,
+      queueId: queueEntry.queueId,
+      rating: queueEntry.rating,
+      tier: queueEntry.tier,
+      stakeCap: queueEntry.stakeCap,
+      ratingRange: 100, // Initial range
+      message: 'Waiting in queue for opponent... Rating range will expand over time.',
+    });
+  });
 
-    if (!versionToUse) {
-      // Find a random published challenge matching criteria
-      const versionConditions = [eq(challenges.isPublished, true)];
+  // DELETE /api/matches/queue - Leave matchmaking queue
+  app.delete('/api/matches/queue', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
 
-      if (category) {
-        versionConditions.push(eq(challenges.category, category));
+    const removed = await removeUserFromQueues(userId);
+
+    if (!removed) {
+      throw new NotFoundError('Not currently in queue');
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Left matchmaking queue',
+    });
+  });
+
+  // GET /api/matches/queue/status - Get queue status for current user
+  app.get('/api/matches/queue/status', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const entry = await isUserInQueue(userId);
+
+    if (!entry) {
+      return reply.status(200).send({
+        inQueue: false,
+      });
+    }
+
+    // Calculate current rating range based on wait time
+    const waitTimeSeconds = Math.floor((Date.now() - entry.joinedAt) / 1000);
+    let currentRange = 100; // Initial
+    if (waitTimeSeconds >= 180) currentRange = 500;
+    else if (waitTimeSeconds >= 120) currentRange = 300;
+    else if (waitTimeSeconds >= 60) currentRange = 200;
+    else if (waitTimeSeconds >= 30) currentRange = 150;
+
+    return reply.status(200).send({
+      inQueue: true,
+      queueId: entry.queueId,
+      rating: entry.rating,
+      tier: entry.tier,
+      stakeCap: entry.stakeCap,
+      requestedStake: entry.requestedStake,
+      waitTimeSeconds,
+      currentRatingRange: currentRange,
+      joinedAt: new Date(entry.joinedAt).toISOString(),
+    });
+  });
+
+  // GET /api/matches/queue/stats - Get queue statistics (admin/public)
+  app.get('/api/matches/queue/stats', async (request: FastifyRequest, reply: FastifyReply) => {
+    const stats = await getQueueStats();
+
+    return reply.status(200).send({
+      totalPlayers: stats.totalPlayers,
+      ratingDistribution: stats.ratingDistribution,
+      averageWaitTimeSeconds: Math.round(stats.averageWaitTimeMs / 1000),
+    });
+  });
+
+  // POST /api/matches/queue/poll - Poll for match (called periodically by clients in queue)
+  app.post('/api/matches/queue/poll', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const entry = await isUserInQueue(userId);
+
+    if (!entry) {
+      throw new NotFoundError('Not in queue');
+    }
+
+    // Try to find a match
+    const matchResult = await findMatch(entry);
+
+    if (matchResult.matched && matchResult.matchedWith) {
+      // Found an opponent!
+      const opponent = matchResult.matchedWith;
+      const effectiveStake = matchResult.effectiveStake || 0;
+
+      // Execute match (removes both from queue)
+      const execResult = await executeMatch(entry, opponent);
+      if (!execResult.success) {
+        // Race condition - stay in queue
+        return reply.status(200).send({
+          matched: false,
+          stillInQueue: true,
+          queueId: entry.queueId,
+          waitTimeSeconds: Math.floor((Date.now() - entry.joinedAt) / 1000),
+          message: 'Still searching for opponent...',
+        });
       }
-      if (difficulty) {
-        versionConditions.push(eq(challenges.difficulty, difficulty));
+
+      // Find a challenge version
+      let versionToUse = entry.challengeVersionId || opponent.challengeVersionId;
+
+      if (!versionToUse) {
+        const versionConditions = [eq(challenges.isPublished, true)];
+        const effectiveCategory = entry.category || opponent.category;
+        const effectiveDifficulty = entry.difficulty || opponent.difficulty;
+
+        if (effectiveCategory) {
+          versionConditions.push(eq(challenges.category, effectiveCategory));
+        }
+        if (effectiveDifficulty) {
+          versionConditions.push(eq(challenges.difficulty, effectiveDifficulty));
+        }
+
+        const [randomVersion] = await db
+          .select({ id: challengeVersions.id })
+          .from(challengeVersions)
+          .innerJoin(challenges, eq(challengeVersions.challengeId, challenges.id))
+          .where(and(...versionConditions))
+          .orderBy(desc(challengeVersions.publishedAt))
+          .limit(1);
+
+        if (randomVersion) {
+          versionToUse = randomVersion.id;
+        }
       }
 
-      const [randomVersion] = await db
-        .select({ id: challengeVersions.id })
-        .from(challengeVersions)
-        .innerJoin(challenges, eq(challengeVersions.challengeId, challenges.id))
-        .where(and(...versionConditions))
-        .orderBy(desc(challengeVersions.publishedAt))
-        .limit(1);
-
-      if (!randomVersion) {
+      if (!versionToUse) {
+        // Re-queue both players
+        await joinQueue(userId, {
+          challengeVersionId: entry.challengeVersionId,
+          category: entry.category,
+          difficulty: entry.difficulty,
+          stakeAmount: entry.requestedStake,
+        });
+        await joinQueue(opponent.userId, {
+          challengeVersionId: opponent.challengeVersionId,
+          category: opponent.category,
+          difficulty: opponent.difficulty,
+          stakeAmount: opponent.requestedStake,
+        });
         throw new NotFoundError('No matching challenges found');
       }
 
-      versionToUse = randomVersion.id;
-    }
+      // Create match
+      const [newMatch] = await db
+        .insert(matches)
+        .values({
+          challengeVersionId: versionToUse,
+          status: 'matched',
+          mode: 'ranked',
+          createdBy: userId,
+        })
+        .returning();
 
-    // Create new ranked match
-    const [newMatch] = await db
-      .insert(matches)
-      .values({
-        challengeVersionId: versionToUse,
-        status: 'open',
-        mode: 'ranked',
-        createdBy: userId,
-      })
-      .returning();
+      await db.insert(matchParticipants).values([
+        { matchId: newMatch.id, userId, seat: 'A' },
+        { matchId: newMatch.id, userId: opponent.userId, seat: 'B' },
+      ]);
 
-    // Add user as first participant
-    const [participant] = await db
-      .insert(matchParticipants)
-      .values({
+      // Create stake holds
+      let hold = null;
+      if (effectiveStake > 0) {
+        const creditAccount = await getOrCreateCreditAccount(userId);
+        if (creditAccount.balanceAvailable >= effectiveStake) {
+          hold = await createStakeHold(creditAccount.id, newMatch.id, effectiveStake);
+        }
+        const opponentAccount = await getOrCreateCreditAccount(opponent.userId);
+        if (opponentAccount.balanceAvailable >= effectiveStake) {
+          await createStakeHold(opponentAccount.id, newMatch.id, effectiveStake);
+        }
+      }
+
+      return reply.status(200).send({
+        matched: true,
         matchId: newMatch.id,
-        userId,
         seat: 'A',
-      })
-      .returning();
-
-    // Create stake hold if needed
-    let hold = null;
-    if (stakeAmount > 0 && creditAccount) {
-      hold = await createStakeHold(creditAccount.id, newMatch.id, stakeAmount);
+        opponentRating: opponent.rating,
+        opponentTier: opponent.tier,
+        effectiveStake,
+        ratingDifference: Math.abs(entry.rating - opponent.rating),
+        message: 'Matched with opponent! Both players need to ready up.',
+        stakeHold: hold ? { id: hold.id, amount: hold.amountReserved } : null,
+      });
     }
 
-    return reply.status(201).send({
+    // No match yet
+    const waitTimeSeconds = Math.floor((Date.now() - entry.joinedAt) / 1000);
+    let currentRange = 100;
+    if (waitTimeSeconds >= 180) currentRange = 500;
+    else if (waitTimeSeconds >= 120) currentRange = 300;
+    else if (waitTimeSeconds >= 60) currentRange = 200;
+    else if (waitTimeSeconds >= 30) currentRange = 150;
+
+    return reply.status(200).send({
       matched: false,
-      matchId: newMatch.id,
-      seat: 'A',
-      message: 'Waiting in queue for opponent...',
-      stakeHold: hold ? { id: hold.id, amount: hold.amountReserved } : null,
+      stillInQueue: true,
+      queueId: entry.queueId,
+      waitTimeSeconds,
+      currentRatingRange: currentRange,
+      message: `Searching for opponent within ±${currentRange} rating...`,
     });
   });
 
