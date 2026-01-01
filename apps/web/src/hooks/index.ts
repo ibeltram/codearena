@@ -119,3 +119,12 @@ export {
   type UpdateProfileRequest,
   type UserProfile,
 } from './use-account';
+export {
+  useAdminAuditEvents,
+  useAdminAuditEvent,
+  useEntityAuditTrail,
+  useUserAuditTrail,
+  useAuditStats,
+  useExportAuditEvents,
+  adminAuditKeys,
+} from './use-admin-audit';

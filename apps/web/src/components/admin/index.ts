@@ -6,3 +6,4 @@ export { VersionEditor } from './version-editor';
 export { ChallengePreview } from './challenge-preview';
 export { DisputeTable } from './dispute-table';
 export { PrizeClaimsTable } from './prize-claims-table';
+export { AuditTable } from './audit-table';

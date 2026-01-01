@@ -7,6 +7,8 @@ import {
   Users,
   TrendingUp,
   ArrowRight,
+  FileText,
+  Trophy,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -134,6 +136,46 @@ export default function AdminDashboardPage() {
             <Button asChild variant="outline">
               <Link href="/admin/users">
                 Manage Users
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Audit Log
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Track and review all platform activity with detailed event logs.
+            </p>
+            <Button asChild variant="outline">
+              <Link href="/admin/audit">
+                View Audit Log
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Trophy className="h-5 w-5" />
+              Prize Claims
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Review and process tournament prize claims and fulfillment.
+            </p>
+            <Button asChild variant="outline">
+              <Link href="/admin/prize-claims">
+                Manage Claims
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
