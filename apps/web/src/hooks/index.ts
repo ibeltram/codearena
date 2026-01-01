@@ -9,7 +9,14 @@ export { useChallenges } from './use-challenges';
 export {
   useLeaderboard,
   useSeasons,
+  useSeason,
+  useSeasonStandings,
+  useSeasonRewards,
+  useMySeasonRewards,
+  useClaimSeasonReward,
   leaderboardKeys,
+  seasonStatusLabels,
+  seasonStatusColors,
 } from './use-leaderboard';
 export {
   useMatch,

@@ -339,9 +339,14 @@ async function syncSchema() {
       CREATE TABLE IF NOT EXISTS seasons (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
         name varchar(100) NOT NULL,
+        description text,
         start_at timestamp with time zone NOT NULL,
         end_at timestamp with time zone NOT NULL,
-        rules_json jsonb DEFAULT '{}'::jsonb NOT NULL
+        status varchar(20) DEFAULT 'upcoming' NOT NULL,
+        rules_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+        rewards_json jsonb DEFAULT '{"tiers": []}'::jsonb NOT NULL,
+        created_at timestamp with time zone DEFAULT now() NOT NULL,
+        updated_at timestamp with time zone DEFAULT now() NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS rankings (
@@ -445,6 +450,16 @@ async function syncSchema() {
         created_at timestamp with time zone DEFAULT now() NOT NULL
       );
 
+      -- Add category column if it doesn't exist (for existing databases)
+      ALTER TABLE events_audit ADD COLUMN IF NOT EXISTS category audit_event_category;
+      -- Update NULL categories to a default value
+      UPDATE events_audit SET category = 'system' WHERE category IS NULL;
+      -- Now make it NOT NULL (after all rows have a value)
+      DO $$ BEGIN
+        ALTER TABLE events_audit ALTER COLUMN category SET NOT NULL;
+      EXCEPTION WHEN others THEN null;
+      END $$;
+
       -- Audit event indexes for efficient querying
       CREATE INDEX IF NOT EXISTS events_audit_actor_user_id_idx ON events_audit(actor_user_id);
       CREATE INDEX IF NOT EXISTS events_audit_category_idx ON events_audit(category);
@@ -533,6 +548,22 @@ async function syncSchema() {
       CREATE INDEX IF NOT EXISTS leaderboard_payouts_leaderboard_type_idx ON leaderboard_payouts(leaderboard_type);
       CREATE INDEX IF NOT EXISTS leaderboard_payouts_period_start_idx ON leaderboard_payouts(period_start);
       CREATE INDEX IF NOT EXISTS leaderboard_payouts_status_idx ON leaderboard_payouts(status);
+
+      CREATE TABLE IF NOT EXISTS season_reward_payouts (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        season_id uuid NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        final_rank integer NOT NULL,
+        final_rating integer NOT NULL,
+        credits_awarded integer DEFAULT 0 NOT NULL,
+        badge_awarded varchar(100),
+        title_awarded varchar(100),
+        claimed_at timestamp with time zone,
+        created_at timestamp with time zone DEFAULT now() NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS season_reward_payouts_season_id_idx ON season_reward_payouts(season_id);
+      CREATE INDEX IF NOT EXISTS season_reward_payouts_user_id_idx ON season_reward_payouts(user_id);
     `);
     console.info('✅ Created tables');
 
@@ -569,6 +600,16 @@ async function syncSchema() {
       CREATE INDEX IF NOT EXISTS user_reports_created_at_idx ON user_reports(created_at);
     `);
     console.info('✅ Created user_reports table');
+
+    // Add new columns to seasons table (for existing databases)
+    await pool.query(`
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS description text;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS status varchar(20) DEFAULT 'upcoming' NOT NULL;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS rewards_json jsonb DEFAULT '{"tiers": []}'::jsonb NOT NULL;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now() NOT NULL;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now() NOT NULL;
+    `);
+    console.info('✅ Added season management columns');
 
     // Add moderation enforcement columns to users table
     await pool.query(`

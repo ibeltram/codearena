@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Loader2, Trophy, Medal } from 'lucide-react';
+import { Loader2, Trophy, Medal, Calendar } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/components/leaderboard';
 import { Pagination } from '@/components/ui';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { useLeaderboard, useSeasons } from '@/hooks';
 import { LeaderboardFilters as FilterState } from '@/types/leaderboard';
 
@@ -61,9 +62,17 @@ export default function LeaderboardPage() {
               </p>
             </div>
           </div>
-          {isFetching && !isLoading && (
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          )}
+          <div className="flex items-center gap-2">
+            {isFetching && !isLoading && (
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            )}
+            <Button variant="outline" size="sm" asChild>
+              <a href="/leaderboard/seasons">
+                <Calendar className="mr-2 h-4 w-4" />
+                All Seasons
+              </a>
+            </Button>
+          </div>
         </div>
 
         {/* Current user position (if in leaderboard) */}
