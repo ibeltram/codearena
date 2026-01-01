@@ -19,13 +19,13 @@
 import { spawn, ChildProcess } from 'child_process';
 import { env } from './env';
 
-// Default sandbox configuration
+// Default sandbox configuration (spec: QUI-105)
 export const SANDBOX_DEFAULTS = {
-  cpuLimit: '1.0',            // 1 CPU core
-  memoryLimit: '512m',        // 512 MB RAM
-  timeoutSeconds: 300,        // 5 minutes max
-  diskLimit: '1g',            // 1 GB disk
-  networkEnabled: false,      // No network by default
+  cpuLimit: '2.0',            // 2 CPU cores (spec requirement)
+  memoryLimit: '4g',          // 4 GB RAM (spec requirement)
+  timeoutSeconds: 600,        // 10 minutes max (spec requirement)
+  diskLimit: '2g',            // 2 GB disk
+  networkEnabled: false,      // No network by default (spec requirement)
   readOnlyRootfs: true,       // Read-only root filesystem
   workdirPath: '/workspace',  // Working directory in container
   artifactPath: '/artifact',  // Artifact mount point

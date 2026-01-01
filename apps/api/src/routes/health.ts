@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { checkDatabaseConnection } from '../db';
 import { checkRedisConnection } from '../lib/redis';
 import { checkStorageConnection } from '../lib/storage';
+import { checkSandboxHealth, SANDBOX_DEFAULTS } from '../lib/sandbox';
 
 interface HealthResponse {
   status: 'ok' | 'degraded' | 'unhealthy';
@@ -55,5 +56,31 @@ export async function healthRoutes(app: FastifyInstance) {
   // Liveness probe - just confirms the process is running
   app.get('/api/health/live', async () => {
     return { status: 'alive' };
+  });
+
+  // Sandbox health check - verifies Docker sandbox capability
+  app.get('/api/health/sandbox', async (request, reply) => {
+    const sandboxHealth = await checkSandboxHealth();
+
+    const isHealthy =
+      sandboxHealth.dockerAvailable &&
+      sandboxHealth.defaultImageAvailable &&
+      sandboxHealth.canCreateContainer;
+
+    if (!isHealthy) {
+      reply.status(503);
+    }
+
+    return {
+      status: isHealthy ? 'ok' : 'unhealthy',
+      timestamp: new Date().toISOString(),
+      checks: sandboxHealth,
+      config: {
+        cpuLimit: SANDBOX_DEFAULTS.cpuLimit,
+        memoryLimit: SANDBOX_DEFAULTS.memoryLimit,
+        timeoutSeconds: SANDBOX_DEFAULTS.timeoutSeconds,
+        networkEnabled: SANDBOX_DEFAULTS.networkEnabled,
+      },
+    };
   });
 }

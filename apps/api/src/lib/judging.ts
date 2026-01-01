@@ -246,13 +246,13 @@ async function judgeSubmission(
   const requirementResults: RequirementResult[] = [];
   let buildSuccess = true;
 
-  // Create sandbox
+  // Create sandbox with spec-compliant defaults (QUI-105)
   const config: SandboxConfig = {
     image: judgeImage || DEFAULT_JUDGE_IMAGE,
-    cpuLimit: '1.0',
-    memoryLimit: '1g',
-    timeoutSeconds: 600, // 10 minutes total
-    networkEnabled: false,
+    cpuLimit: SANDBOX_DEFAULTS.cpuLimit,      // 2 CPU cores
+    memoryLimit: SANDBOX_DEFAULTS.memoryLimit, // 4 GB RAM
+    timeoutSeconds: SANDBOX_DEFAULTS.timeoutSeconds, // 10 minutes
+    networkEnabled: SANDBOX_DEFAULTS.networkEnabled, // No network
   };
 
   const session = await createSandbox(artifactPath, config);
