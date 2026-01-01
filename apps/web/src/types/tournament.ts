@@ -69,6 +69,8 @@ export interface Tournament {
   registrationEndAt: string | null;
   startAt: string;
   endAt: string | null;
+  checkInStartAt: string | null;
+  checkInEndAt: string | null;
   entryFeeCredits: number;
   prizePoolJson: PrizePool;
   rulesJson: TournamentRules;
@@ -247,6 +249,77 @@ export function getTimeUntilStart(startAt: string): string {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+// Check-in window status
+export type CheckInWindowStatus =
+  | 'not_configured'
+  | 'not_started'
+  | 'open'
+  | 'closed';
+
+// Helper to check check-in window status
+export function getCheckInWindowStatus(tournament: Tournament): CheckInWindowStatus {
+  if (!tournament.checkInStartAt && !tournament.checkInEndAt) {
+    return 'not_configured';
+  }
+
+  const now = new Date();
+
+  if (tournament.checkInStartAt && now < new Date(tournament.checkInStartAt)) {
+    return 'not_started';
+  }
+
+  if (tournament.checkInEndAt && now > new Date(tournament.checkInEndAt)) {
+    return 'closed';
+  }
+
+  return 'open';
+}
+
+// Helper to check if user can check in
+export function canCheckIn(tournament: Tournament, isRegistered: boolean, isCheckedIn: boolean): boolean {
+  if (!isRegistered || isCheckedIn) return false;
+  if (tournament.status !== 'registration_open' && tournament.status !== 'registration_closed') return false;
+
+  const windowStatus = getCheckInWindowStatus(tournament);
+  // If no check-in window configured, allow check-in anytime before tournament starts
+  if (windowStatus === 'not_configured') {
+    return tournament.status !== 'in_progress' && tournament.status !== 'completed';
+  }
+
+  return windowStatus === 'open';
+}
+
+// Helper to get time until check-in opens/closes
+export function getCheckInWindowTime(tournament: Tournament): string | null {
+  const windowStatus = getCheckInWindowStatus(tournament);
+
+  if (windowStatus === 'not_configured') return null;
+
+  const now = new Date();
+
+  if (windowStatus === 'not_started' && tournament.checkInStartAt) {
+    const start = new Date(tournament.checkInStartAt);
+    const diff = start.getTime() - now.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours > 0) return `Opens in ${hours}h ${minutes}m`;
+    return `Opens in ${minutes}m`;
+  }
+
+  if (windowStatus === 'open' && tournament.checkInEndAt) {
+    const end = new Date(tournament.checkInEndAt);
+    const diff = end.getTime() - now.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours > 0) return `Closes in ${hours}h ${minutes}m`;
+    return `Closes in ${minutes}m`;
+  }
+
+  return null;
 }
 
 // ============================================

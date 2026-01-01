@@ -8,6 +8,7 @@ import {
   Coins,
   Shield,
   AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,11 +23,15 @@ import {
   formatPrizePool,
   getTimeUntilStart,
   canRegister,
+  canCheckIn,
+  getCheckInWindowStatus,
+  getCheckInWindowTime,
 } from '@/types/tournament';
 
 interface TournamentHeaderProps {
   tournament: Tournament;
   isRegistered?: boolean;
+  isCheckedIn?: boolean;
   isLoading?: boolean;
   onRegister?: () => void;
   onWithdraw?: () => void;
@@ -36,6 +41,7 @@ interface TournamentHeaderProps {
 export function TournamentHeader({
   tournament,
   isRegistered = false,
+  isCheckedIn = false,
   isLoading = false,
   onRegister,
   onWithdraw,
@@ -45,6 +51,9 @@ export function TournamentHeader({
   const isLive = tournament.status === 'in_progress';
   const isCompleted = tournament.status === 'completed';
   const registrationAvailable = canRegister(tournament);
+  const checkInAvailable = canCheckIn(tournament, isRegistered, isCheckedIn);
+  const checkInWindowStatus = getCheckInWindowStatus(tournament);
+  const checkInWindowTime = getCheckInWindowTime(tournament);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'TBD';
@@ -184,6 +193,51 @@ export function TournamentHeader({
             </div>
           )}
 
+          {/* Check-in window info */}
+          {isRegistered && checkInWindowStatus !== 'not_configured' && (
+            <div
+              className={`flex items-center gap-2 p-3 rounded-lg mb-4 ${
+                isCheckedIn
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                  : checkInWindowStatus === 'open'
+                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                  : checkInWindowStatus === 'not_started'
+                  ? 'bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400'
+                  : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+              }`}
+            >
+              {isCheckedIn ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="text-sm font-medium">You are checked in!</span>
+                </>
+              ) : checkInWindowStatus === 'open' ? (
+                <>
+                  <Clock className="h-4 w-4" />
+                  <span className="text-sm">
+                    <strong>Check-in is open!</strong>
+                    {checkInWindowTime && ` ${checkInWindowTime}`}
+                  </span>
+                </>
+              ) : checkInWindowStatus === 'not_started' ? (
+                <>
+                  <Clock className="h-4 w-4" />
+                  <span className="text-sm">
+                    Check-in not yet open.
+                    {checkInWindowTime && ` ${checkInWindowTime}`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    Check-in period has ended. You did not check in.
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3">
             {isRegistered ? (
@@ -192,12 +246,32 @@ export function TournamentHeader({
                   <Users className="h-4 w-4 mr-2" />
                   You are registered
                 </Badge>
+                {isCheckedIn && (
+                  <Badge variant="default" className="py-2 px-4 bg-green-600">
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Checked In
+                  </Badge>
+                )}
                 {(tournament.status === 'registration_open' ||
                   tournament.status === 'registration_closed') && (
                   <>
-                    <Button variant="outline" onClick={onCheckIn} disabled={isLoading}>
-                      Check In
-                    </Button>
+                    {checkInAvailable && (
+                      <Button
+                        variant="default"
+                        onClick={onCheckIn}
+                        disabled={isLoading}
+                        className="gap-2"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Check In Now
+                      </Button>
+                    )}
+                    {!isCheckedIn && checkInWindowStatus === 'not_started' && (
+                      <Button variant="outline" disabled className="gap-2">
+                        <Clock className="h-4 w-4" />
+                        Check-in Not Open
+                      </Button>
+                    )}
                     <Button
                       variant="destructive"
                       size="sm"

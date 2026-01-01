@@ -92,6 +92,17 @@ export default function TournamentDetailPage() {
     );
   }, [isAuthenticated, currentUserId, participantsData?.participants]);
 
+  // Check if current user is checked in
+  const isCheckedIn = useMemo(() => {
+    if (!isAuthenticated || !currentUserId || !participantsData?.participants) {
+      return false;
+    }
+    const userParticipant = participantsData.participants.find(
+      (p) => p.user.id === currentUserId
+    );
+    return userParticipant?.isCheckedIn || false;
+  }, [isAuthenticated, currentUserId, participantsData?.participants]);
+
   // Get user's placement for prize claim eligibility
   const userPlacement = useMemo(() => {
     if (!isAuthenticated || !currentUserId || !participantsData?.participants) {
@@ -193,6 +204,7 @@ export default function TournamentDetailPage() {
         <TournamentHeader
           tournament={tournament}
           isRegistered={isRegistered}
+          isCheckedIn={isCheckedIn}
           isLoading={
             registerMutation.isPending ||
             withdrawMutation.isPending ||

@@ -54,6 +54,8 @@ const createTournamentSchema = z.object({
   minParticipants: z.number().int().min(2).default(4),
   registrationStartAt: z.string().datetime().optional(),
   registrationEndAt: z.string().datetime().optional(),
+  checkInStartAt: z.string().datetime().optional(),
+  checkInEndAt: z.string().datetime().optional(),
   startAt: z.string().datetime(),
   entryFeeCredits: z.number().int().min(0).default(0),
   prizePoolJson: z.record(z.unknown()).default({}),
@@ -67,6 +69,8 @@ const updateTournamentSchema = z.object({
   minParticipants: z.number().int().min(2).optional(),
   registrationStartAt: z.string().datetime().optional(),
   registrationEndAt: z.string().datetime().optional(),
+  checkInStartAt: z.string().datetime().optional(),
+  checkInEndAt: z.string().datetime().optional(),
   startAt: z.string().datetime().optional(),
   entryFeeCredits: z.number().int().min(0).optional(),
   prizePoolJson: z.record(z.unknown()).optional(),
@@ -720,6 +724,30 @@ export async function tournamentRoutes(app: FastifyInstance) {
 
     const { id: tournamentId } = paramResult.data;
 
+    // Get tournament to verify check-in is allowed
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    if (!tournament) {
+      throw new NotFoundError('Tournament', tournamentId);
+    }
+
+    // Validate tournament status
+    if (tournament.status !== 'registration_closed' && tournament.status !== 'registration_open') {
+      throw new ConflictError('Check-in not available for this tournament status');
+    }
+
+    // Validate check-in window if configured
+    const now = new Date();
+    if (tournament.checkInStartAt && now < tournament.checkInStartAt) {
+      throw new ConflictError(`Check-in opens at ${tournament.checkInStartAt.toISOString()}`);
+    }
+    if (tournament.checkInEndAt && now > tournament.checkInEndAt) {
+      throw new ConflictError('Check-in period has ended');
+    }
+
     // Get registration
     const [registration] = await db
       .select()
@@ -739,30 +767,17 @@ export async function tournamentRoutes(app: FastifyInstance) {
       throw new ConflictError('Already checked in');
     }
 
-    // Get tournament to verify check-in is allowed
-    const [tournament] = await db
-      .select()
-      .from(tournaments)
-      .where(eq(tournaments.id, tournamentId));
-
-    if (!tournament) {
-      throw new NotFoundError('Tournament', tournamentId);
-    }
-
-    // Check-in typically allowed shortly before tournament starts
-    if (tournament.status !== 'registration_closed' && tournament.status !== 'registration_open') {
-      throw new ConflictError('Check-in not available for this tournament status');
-    }
-
-    // Update registration
+    // Update registration with check-in time
+    const checkedInAt = new Date();
     await db
       .update(tournamentRegistrations)
-      .set({ isCheckedIn: true })
+      .set({ isCheckedIn: true, checkedInAt })
       .where(eq(tournamentRegistrations.id, registration.id));
 
     return {
       message: 'Successfully checked in',
       tournamentId,
+      checkedInAt: checkedInAt.toISOString(),
     };
   });
 
@@ -811,6 +826,8 @@ export async function tournamentRoutes(app: FastifyInstance) {
         minParticipants: data.minParticipants,
         registrationStartAt: data.registrationStartAt ? new Date(data.registrationStartAt) : null,
         registrationEndAt: data.registrationEndAt ? new Date(data.registrationEndAt) : null,
+        checkInStartAt: data.checkInStartAt ? new Date(data.checkInStartAt) : null,
+        checkInEndAt: data.checkInEndAt ? new Date(data.checkInEndAt) : null,
         startAt: new Date(data.startAt),
         entryFeeCredits: data.entryFeeCredits,
         prizePoolJson: data.prizePoolJson,
@@ -870,6 +887,8 @@ export async function tournamentRoutes(app: FastifyInstance) {
     if (data.minParticipants) updateData.minParticipants = data.minParticipants;
     if (data.registrationStartAt) updateData.registrationStartAt = new Date(data.registrationStartAt);
     if (data.registrationEndAt) updateData.registrationEndAt = new Date(data.registrationEndAt);
+    if (data.checkInStartAt) updateData.checkInStartAt = new Date(data.checkInStartAt);
+    if (data.checkInEndAt) updateData.checkInEndAt = new Date(data.checkInEndAt);
     if (data.startAt) updateData.startAt = new Date(data.startAt);
     if (data.entryFeeCredits !== undefined) updateData.entryFeeCredits = data.entryFeeCredits;
     if (data.prizePoolJson) updateData.prizePoolJson = data.prizePoolJson;
@@ -1014,19 +1033,58 @@ export async function tournamentRoutes(app: FastifyInstance) {
       throw new ConflictError('Bracket can only be generated after registration closes');
     }
 
-    // Get registered participants (checked-in only, or all if no check-in requirement)
-    const registrations = await db
+    // Get all registrations
+    const allRegistrations = await db
       .select()
       .from(tournamentRegistrations)
       .where(eq(tournamentRegistrations.tournamentId, tournamentId))
       .orderBy(tournamentRegistrations.seed, tournamentRegistrations.registeredAt);
 
-    const participantIds = registrations.map(r => r.userId);
+    // Determine if check-in is required (if check-in window was configured)
+    const checkInRequired = tournament.checkInStartAt !== null || tournament.checkInEndAt !== null;
+
+    // Filter to only checked-in participants if check-in was required
+    let eligibleRegistrations = allRegistrations;
+    let noShowRegistrations: typeof allRegistrations = [];
+
+    if (checkInRequired) {
+      eligibleRegistrations = allRegistrations.filter(r => r.isCheckedIn);
+      noShowRegistrations = allRegistrations.filter(r => !r.isCheckedIn);
+
+      // Handle no-shows: forfeit their entry fee
+      if (tournament.entryFeeCredits > 0 && noShowRegistrations.length > 0) {
+        for (const noShow of noShowRegistrations) {
+          try {
+            // Release their hold but mark as forfeited (don't return to user)
+            await releaseStakeHold(noShow.userId, tournamentId, 'forfeited');
+          } catch (error) {
+            // Log but continue - stake may already be released
+            console.warn(`Failed to forfeit stake for user ${noShow.userId}:`, error);
+          }
+        }
+      }
+
+      // Mark no-show registrations as eliminated
+      if (noShowRegistrations.length > 0) {
+        await db
+          .update(tournamentRegistrations)
+          .set({ eliminatedAt: new Date() })
+          .where(
+            and(
+              eq(tournamentRegistrations.tournamentId, tournamentId),
+              eq(tournamentRegistrations.isCheckedIn, false)
+            )
+          );
+      }
+    }
+
+    const participantIds = eligibleRegistrations.map(r => r.userId);
 
     if (participantIds.length < tournament.minParticipants) {
-      throw new ValidationError('Not enough participants', {
+      throw new ValidationError('Not enough checked-in participants', {
         required: tournament.minParticipants,
-        current: participantIds.length,
+        checkedIn: participantIds.length,
+        noShows: noShowRegistrations.length,
       });
     }
 
@@ -1078,6 +1136,9 @@ export async function tournamentRoutes(app: FastifyInstance) {
       tournamentId,
       matchCount: insertedMatches.length,
       format: tournament.format,
+      participants: participantIds.length,
+      noShows: noShowRegistrations.length,
+      noShowsForfeited: checkInRequired && tournament.entryFeeCredits > 0 ? noShowRegistrations.length : 0,
     };
   });
 
