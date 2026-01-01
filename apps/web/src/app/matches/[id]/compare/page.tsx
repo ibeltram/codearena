@@ -221,6 +221,8 @@ export default function MatchComparePage() {
             <DiffViewer
               file={selectedFileData}
               viewMode={viewMode}
+              leftArtifactId={comparison.comparison.leftArtifact?.id}
+              rightArtifactId={comparison.comparison.rightArtifact?.id}
               className="h-full"
             />
           ) : (

@@ -11,13 +11,16 @@ import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { CompareFile, FileDiffStatus } from '@/types/artifact';
 import { formatFileSize, getLanguageFromPath } from '@/types/artifact';
-import { getMockFileContent } from '@/hooks/use-artifact';
+import { useArtifactFile, getMockFileContent } from '@/hooks/use-artifact';
 
 interface DiffViewerProps {
   file: CompareFile;
   viewMode: 'split' | 'unified';
+  leftArtifactId?: string;
+  rightArtifactId?: string;
   className?: string;
 }
 
@@ -102,17 +105,44 @@ const statusLabels: Record<FileDiffStatus, string> = {
   removed: 'Removed',
 };
 
-export function DiffViewer({ file, viewMode, className }: DiffViewerProps) {
-  // Get file contents
+export function DiffViewer({ file, viewMode, leftArtifactId, rightArtifactId, className }: DiffViewerProps) {
+  // Fetch real file content from API when artifact IDs are provided
+  const {
+    data: leftFileData,
+    isLoading: leftLoading,
+    error: leftError,
+  } = useArtifactFile(
+    file.leftFile && leftArtifactId ? leftArtifactId : undefined,
+    file.leftFile ? file.path : undefined
+  );
+
+  const {
+    data: rightFileData,
+    isLoading: rightLoading,
+    error: rightError,
+  } = useArtifactFile(
+    file.rightFile && rightArtifactId ? rightArtifactId : undefined,
+    file.rightFile ? file.path : undefined
+  );
+
+  // Fall back to mock content if API call fails or no artifact IDs provided
   const leftContent = useMemo(() => {
     if (!file.leftFile) return null;
-    return getMockFileContent(file.path);
-  }, [file.leftFile, file.path]);
+    if (leftFileData) return leftFileData;
+    if (leftError || !leftArtifactId) return getMockFileContent(file.path);
+    return null;
+  }, [file.leftFile, file.path, leftFileData, leftError, leftArtifactId]);
 
   const rightContent = useMemo(() => {
     if (!file.rightFile) return null;
-    return getMockFileContent(file.path);
-  }, [file.rightFile, file.path]);
+    if (rightFileData) return rightFileData;
+    if (rightError || !rightArtifactId) return getMockFileContent(file.path);
+    return null;
+  }, [file.rightFile, file.path, rightFileData, rightError, rightArtifactId]);
+
+  // Show loading state while fetching
+  const isLoading = (file.leftFile && leftArtifactId && leftLoading) ||
+                    (file.rightFile && rightArtifactId && rightLoading);
 
   // Compute diff
   const { leftDiff, rightDiff } = useMemo(() => {
@@ -181,14 +211,27 @@ export function DiffViewer({ file, viewMode, className }: DiffViewerProps) {
         </div>
       </div>
 
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex-1 p-4 space-y-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      )}
+
       {/* Diff content */}
-      <div className="flex-1 overflow-auto">
-        {viewMode === 'split' ? (
-          <SplitView leftDiff={leftDiff} rightDiff={rightDiff} />
-        ) : (
-          <UnifiedView leftDiff={leftDiff} rightDiff={rightDiff} />
-        )}
-      </div>
+      {!isLoading && (
+        <div className="flex-1 overflow-auto">
+          {viewMode === 'split' ? (
+            <SplitView leftDiff={leftDiff} rightDiff={rightDiff} />
+          ) : (
+            <UnifiedView leftDiff={leftDiff} rightDiff={rightDiff} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
