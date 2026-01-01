@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { UserProfile, UserProfileResponse, User } from '@/types/user';
-import { MatchesResponse } from '@/types/match';
+import { UserMatchHistoryResponse } from '@/types/match';
 
 // Fetch user profile by username
 export function useUserProfile(username: string | undefined) {
@@ -45,7 +45,7 @@ export function useUserMatchHistory(
 
   return useQuery({
     queryKey: ['user-matches', username, filters],
-    queryFn: () => api.get<MatchesResponse>(endpoint),
+    queryFn: () => api.get<UserMatchHistoryResponse>(endpoint),
     enabled: !!username,
     staleTime: 30 * 1000, // 30 seconds
     placeholderData: (previousData) => previousData,

@@ -98,6 +98,42 @@ export interface MatchesResponse {
   };
 }
 
+// Match result type for user match history
+export type MatchResult = 'win' | 'loss' | 'draw' | 'pending';
+
+// User match history item (includes result data from API)
+export interface UserMatchHistoryItem {
+  id: string;
+  status: MatchStatus;
+  mode: MatchMode;
+  challenge: {
+    title: string;
+    category: ChallengeCategory;
+    slug: string;
+  };
+  opponent: {
+    id: string;
+    displayName: string;
+    avatarUrl: string | null;
+  } | null;
+  userScore: number | null;
+  opponentScore: number | null;
+  result: MatchResult;
+  startAt: string | null;
+  endAt: string | null;
+  createdAt: string;
+}
+
+export interface UserMatchHistoryResponse {
+  data: UserMatchHistoryItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export interface MatchFilters {
   page?: number;
   limit?: number;

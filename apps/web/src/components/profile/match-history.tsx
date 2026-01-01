@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
-  MatchListItem,
-  statusLabels,
-  statusColors,
+  UserMatchHistoryItem,
+  MatchResult,
   modeLabels,
 } from '@/types/match';
-import { categoryLabels, difficultyColors } from '@/types/challenge';
+import { categoryLabels } from '@/types/challenge';
 import {
   Trophy,
   X,
@@ -21,26 +21,12 @@ import {
   History,
 } from 'lucide-react';
 
-type MatchResult = 'win' | 'loss' | 'draw' | 'pending';
-
 interface MatchHistoryProps {
-  matches: MatchListItem[];
+  matches: UserMatchHistoryItem[];
   currentUserId?: string;
   isLoading?: boolean;
   showLoadMore?: boolean;
   onLoadMore?: () => void;
-}
-
-function getMatchResult(
-  match: MatchListItem,
-  currentUserId?: string
-): MatchResult {
-  if (match.status !== 'finalized' && match.status !== 'archived') {
-    return 'pending';
-  }
-  // TODO: Once we have scores, determine win/loss/draw
-  // For now, return pending as we don't have score data in MatchListItem
-  return 'pending';
 }
 
 function formatMatchDate(dateString: string): string {
@@ -78,47 +64,89 @@ function ResultIcon({ result }: { result: MatchResult }) {
   }
 }
 
+function ResultBadge({ result, userScore, opponentScore }: {
+  result: MatchResult;
+  userScore: number | null;
+  opponentScore: number | null;
+}) {
+  const colors: Record<MatchResult, string> = {
+    win: 'bg-green-500/10 text-green-500 border-green-500/30',
+    loss: 'bg-red-500/10 text-red-500 border-red-500/30',
+    draw: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30',
+    pending: 'bg-muted text-muted-foreground border-muted',
+  };
+
+  const labels: Record<MatchResult, string> = {
+    win: 'Won',
+    loss: 'Lost',
+    draw: 'Draw',
+    pending: 'Pending',
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {userScore !== null && opponentScore !== null && (
+        <span className="text-sm font-medium tabular-nums">
+          {userScore} - {opponentScore}
+        </span>
+      )}
+      <Badge variant="outline" className={`text-xs ${colors[result]}`}>
+        {labels[result]}
+      </Badge>
+    </div>
+  );
+}
+
 function MatchHistoryItem({
   match,
-  currentUserId,
 }: {
-  match: MatchListItem;
-  currentUserId?: string;
+  match: UserMatchHistoryItem;
 }) {
-  const result = getMatchResult(match, currentUserId);
-
   return (
     <Link href={`/matches/${match.id}`}>
       <div className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group">
         {/* Result Icon */}
         <div className="flex-shrink-0">
-          <ResultIcon result={result} />
+          <ResultIcon result={match.result} />
         </div>
 
         {/* Match Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h4 className="font-medium truncate">{match.challenge.title}</h4>
-            <Badge
-              variant="outline"
-              className={`text-xs ${difficultyColors[match.challenge.difficulty]}`}
-            >
-              {match.challenge.difficulty}
-            </Badge>
           </div>
 
           <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
             <span>{categoryLabels[match.challenge.category]}</span>
             <span>·</span>
             <span>{modeLabels[match.mode]}</span>
-            <span>·</span>
-            <Badge
-              variant="secondary"
-              className={`text-xs ${statusColors[match.status]} text-white`}
-            >
-              {statusLabels[match.status]}
-            </Badge>
+            {match.opponent && (
+              <>
+                <span>·</span>
+                <span className="flex items-center gap-1">
+                  vs
+                  <Avatar className="h-4 w-4">
+                    <AvatarImage src={match.opponent.avatarUrl || undefined} />
+                    <AvatarFallback className="text-[8px]">
+                      {match.opponent.displayName.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-medium text-foreground">
+                    {match.opponent.displayName}
+                  </span>
+                </span>
+              </>
+            )}
           </div>
+        </div>
+
+        {/* Result Badge with Score */}
+        <div className="flex items-center gap-3">
+          <ResultBadge
+            result={match.result}
+            userScore={match.userScore}
+            opponentScore={match.opponentScore}
+          />
         </div>
 
         {/* Date */}
@@ -135,7 +163,7 @@ function MatchHistoryItem({
 
 export function MatchHistory({
   matches,
-  currentUserId,
+  currentUserId: _currentUserId,
   isLoading,
   showLoadMore,
   onLoadMore,
@@ -191,7 +219,6 @@ export function MatchHistory({
                 <MatchHistoryItem
                   key={match.id}
                   match={match}
-                  currentUserId={currentUserId}
                 />
               ))}
             </div>
