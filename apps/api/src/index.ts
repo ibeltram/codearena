@@ -10,6 +10,8 @@ import { logger } from './lib/logger';
 import { cleanupAllConnections } from './lib/match-events';
 import { closeQueues } from './lib/queue';
 import { closeRedis } from './lib/redis';
+// Ensure collusion detection hook is loaded for match events
+import './lib/collusion-detection-hook';
 import {
   registerCookie,
   registerCors,

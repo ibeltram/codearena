@@ -10,6 +10,7 @@ import { FastifyReply } from 'fastify';
 import { MatchEvent, MatchEventType, onMatchEvent, getMatchState } from './match-state-machine';
 import { logger } from './logger';
 import { getRedis, getSubscriber, CHANNELS } from './redis';
+import { triggerCollusionDetectionForMatch } from './collusion-detection-hook';
 
 // Client connection types
 type ConnectionType = 'websocket' | 'sse';
@@ -526,6 +527,14 @@ export function initializeMatchEvents(): void {
       event.type === 'match.cancelled'
     ) {
       stopTimerBroadcast(event.matchId);
+    }
+
+    // Trigger collusion detection when match is finalized
+    if (event.type === 'match.finalized') {
+      // Run asynchronously to not block match finalization
+      triggerCollusionDetectionForMatch(event.matchId).catch((error) => {
+        logger.error({ error, matchId: event.matchId }, 'Error running collusion detection after match finalized');
+      });
     }
   });
 
