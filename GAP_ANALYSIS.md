@@ -75,7 +75,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | **Dispute Creation (User)** | ✅ Complete - Open Dispute button + dialog on finalized matches |
 | **Prize Claims Flow** | ✅ Complete - Claim UI for tournament winners |
 | **Prize Fulfillment Admin** | ✅ Complete - Admin prize approval/fulfillment |
-| **Moderation Actions** | No admin sanction/ban UI |
+| **Moderation Actions** | ✅ Complete - Admin user management with ban/unban/role editing |
 | **Audit Log Explorer** | ✅ Complete - Admin audit log UI with filters/export |
 | **Runner Image Management** | No admin UI for judge images |
 | **Template Management** | No admin template upload UI |
