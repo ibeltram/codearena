@@ -167,3 +167,4 @@ export {
   useResolveReport,
   adminReportKeys,
 } from './use-admin-reports';
+export { useStakeCap, stakeCapKeys } from './use-stake-cap';

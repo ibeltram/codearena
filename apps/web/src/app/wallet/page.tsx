@@ -9,6 +9,7 @@ import {
   TransactionHistory,
   ActiveHolds,
   RewardsCTA,
+  StakeCapInfo,
 } from '@/components/wallet';
 
 export default function WalletPage() {
@@ -31,6 +32,11 @@ export default function WalletPage() {
         {/* Balance cards */}
         <section>
           <WalletBalance />
+        </section>
+
+        {/* Stake cap info - shows max stake based on rating */}
+        <section>
+          <StakeCapInfo />
         </section>
 
         {/* Rewards CTA */}

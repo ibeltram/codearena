@@ -273,14 +273,18 @@ export default async function ratingsRoutes(fastify: FastifyInstance) {
       const userId = request.user!.id;
 
       try {
+        const { getStakeCapTier, STAKE_CAP_TIERS } = await import('../lib/glicko2');
         const stakeCap = await getUserStakeCap(userId);
         const rating = await getPlayerRating(userId);
+        const stakeCapTier = getStakeCapTier(rating.rating);
 
         return reply.send({
           stakeCap,
+          stakeCapTier,
           tier: rating.tier,
           rating: rating.rating,
           deviation: rating.deviation,
+          tiers: STAKE_CAP_TIERS,
         });
       } catch (error) {
         request.log.error({ error, userId }, 'Failed to get stake cap');
@@ -354,17 +358,20 @@ export default async function ratingsRoutes(fastify: FastifyInstance) {
    */
   fastify.get('/tiers', {
     handler: async (_request: FastifyRequest, reply: FastifyReply) => {
+      const { STAKE_CAP_TIERS } = await import('../lib/glicko2');
+
       return reply.send({
         tiers: [
-          { name: 'Unranked', minRating: 0, minGames: 0 },
-          { name: 'Bronze', minRating: 0, minGames: 5 },
-          { name: 'Silver', minRating: 1200, minGames: 5 },
-          { name: 'Gold', minRating: 1400, minGames: 5 },
-          { name: 'Platinum', minRating: 1600, minGames: 5 },
-          { name: 'Diamond', minRating: 1800, minGames: 5 },
-          { name: 'Master', minRating: 2000, minGames: 5 },
-          { name: 'Grandmaster', minRating: 2200, minGames: 5 },
+          { name: 'Unranked', minRating: 0, minGames: 0, stakeCap: 50 },
+          { name: 'Bronze', minRating: 0, minGames: 5, stakeCap: STAKE_CAP_TIERS.bronze.cap },
+          { name: 'Silver', minRating: 1200, minGames: 5, stakeCap: STAKE_CAP_TIERS.silver.cap },
+          { name: 'Gold', minRating: 1400, minGames: 5, stakeCap: STAKE_CAP_TIERS.gold.cap },
+          { name: 'Platinum', minRating: 1600, minGames: 5, stakeCap: STAKE_CAP_TIERS.platinum.cap },
+          { name: 'Diamond', minRating: 1800, minGames: 5, stakeCap: STAKE_CAP_TIERS.diamond.cap },
+          { name: 'Master', minRating: 2000, minGames: 5, stakeCap: STAKE_CAP_TIERS.diamond.cap },
+          { name: 'Grandmaster', minRating: 2200, minGames: 5, stakeCap: STAKE_CAP_TIERS.diamond.cap },
         ],
+        stakeCaps: STAKE_CAP_TIERS,
         defaults: {
           rating: 1500,
           deviation: 350,

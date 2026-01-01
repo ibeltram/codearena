@@ -389,6 +389,17 @@ export async function matchRoutes(app: FastifyInstance) {
       throw new ValidationError('Challenge is not published');
     }
 
+    // Validate stake cap based on rating if stake > 0
+    if (stakeAmount > 0) {
+      const stakeValidation = await validateStakeAmount(userId, stakeAmount);
+      if (!stakeValidation.valid) {
+        throw new ValidationError(stakeValidation.reason || 'Stake exceeds your rating-based cap', {
+          requested: stakeAmount,
+          maxAllowed: stakeValidation.maxAllowed,
+        });
+      }
+    }
+
     // Get or create credit account and check balance if stake > 0
     let creditAccount = null;
     if (stakeAmount > 0) {
@@ -501,6 +512,17 @@ export async function matchRoutes(app: FastifyInstance) {
 
     if (existingParticipation.length > 0) {
       throw new ConflictError('Already in an active match or queue');
+    }
+
+    // Validate stake cap based on rating if stake > 0
+    if (stakeAmount > 0) {
+      const stakeValidation = await validateStakeAmount(userId, stakeAmount);
+      if (!stakeValidation.valid) {
+        throw new ValidationError(stakeValidation.reason || 'Stake exceeds your rating-based cap', {
+          requested: stakeAmount,
+          maxAllowed: stakeValidation.maxAllowed,
+        });
+      }
     }
 
     // Verify credit balance if stake > 0

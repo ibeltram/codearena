@@ -340,42 +340,49 @@ export function getRatingTier(rating: number, gamesPlayed: number): RatingTier {
 }
 
 /**
+ * Stake cap tiers based on rating (from spec)
+ * Bronze (0-1299): 50, Silver (1300-1599): 100, Gold (1600-1899): 250,
+ * Platinum (1900-2199): 500, Diamond (2200+): 1000
+ */
+export const STAKE_CAP_TIERS = {
+  bronze: { minRating: 0, maxRating: 1299, cap: 50 },
+  silver: { minRating: 1300, maxRating: 1599, cap: 100 },
+  gold: { minRating: 1600, maxRating: 1899, cap: 250 },
+  platinum: { minRating: 1900, maxRating: 2199, cap: 500 },
+  diamond: { minRating: 2200, maxRating: Infinity, cap: 1000 },
+} as const;
+
+export type StakeCapTier = keyof typeof STAKE_CAP_TIERS;
+
+/**
+ * Get stake cap tier name based on rating
+ */
+export function getStakeCapTier(rating: number): StakeCapTier {
+  if (rating >= STAKE_CAP_TIERS.diamond.minRating) return 'diamond';
+  if (rating >= STAKE_CAP_TIERS.platinum.minRating) return 'platinum';
+  if (rating >= STAKE_CAP_TIERS.gold.minRating) return 'gold';
+  if (rating >= STAKE_CAP_TIERS.silver.minRating) return 'silver';
+  return 'bronze';
+}
+
+/**
  * Calculate stake cap based on rating
- * Lower-rated players have lower stake caps to protect them
+ * Lower-rated players have lower stake caps to protect them from excessive losses.
+ *
+ * Tiers (from spec):
+ * - Bronze (0-1299): 50 credits max
+ * - Silver (1300-1599): 100 credits max
+ * - Gold (1600-1899): 250 credits max
+ * - Platinum (1900-2199): 500 credits max
+ * - Diamond (2200+): 1000 credits max
  */
 export function calculateStakeCap(rating: number, deviation: number): number {
-  // Base cap depends on rating tier
-  let baseCap: number;
-  const tier = getRatingTier(rating, 10); // Assume ranked for cap calculation
-
-  switch (tier) {
-    case 'Unranked':
-    case 'Bronze':
-      baseCap = 100;
-      break;
-    case 'Silver':
-      baseCap = 250;
-      break;
-    case 'Gold':
-      baseCap = 500;
-      break;
-    case 'Platinum':
-      baseCap = 1000;
-      break;
-    case 'Diamond':
-      baseCap = 2500;
-      break;
-    case 'Master':
-      baseCap = 5000;
-      break;
-    case 'Grandmaster':
-      baseCap = 10000;
-      break;
-    default:
-      baseCap = 100;
-  }
+  // Get base cap from tier
+  const tier = getStakeCapTier(rating);
+  let baseCap = STAKE_CAP_TIERS[tier].cap;
 
   // Reduce cap if deviation is high (uncertain rating)
+  // This adds extra protection for players with uncertain ratings
   if (deviation > 200) {
     baseCap = Math.floor(baseCap * 0.5);
   } else if (deviation > 100) {
