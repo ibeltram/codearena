@@ -19,6 +19,8 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | **Tournaments List** | Real DB queries | Filters, pagination | Complete |
 | **Admin Challenge CRUD** | Full CRUD | Form, versioning, publish | Complete |
 | **Admin Disputes** | Review, resolve, rejudge | List, detail, actions | Complete |
+| **Admin User Reports** | Full CRUD, resolve with actions | List, filters, detail page | Complete (QUI-119) |
+| **User Reporting** | Submit/list reports | Report button, dialog | Complete (QUI-119) |
 | **VS Code Auth** | Device code flow | Status bar, commands | Complete |
 | **VS Code Match Events** | SSE streaming | Real-time updates | Complete |
 
@@ -139,7 +141,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | Phase 5: Submissions | Multipart upload done | ~85% |
 | Phase 6: Judging | Complete (scoring, tie-breakers, results UI) | ~90% |
 | Phase 7: Credits Wallet | Complete | ~95% |
-| Phase 8: Rankings/Disputes | Complete (leaderboard, disputes, user dispute UI) | ~90% |
+| Phase 8: Rankings/Disputes | Complete (leaderboard, disputes, user reports) | ~95% |
 | Phase 9: Tournaments | Prize claims added | ~75% |
 | Phase 10: Automation Services | Not started | 0% |
 | Phase 11: Production Hardening | Rate limiting, GDPR done | ~60% |
