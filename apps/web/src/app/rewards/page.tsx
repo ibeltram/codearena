@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Gift, Coins, Sparkles, Zap, Server, AlertCircle } from 'lucide-react';
+import { Gift, Coins, Sparkles, Zap, Server, AlertCircle, Copy, Check, Mail, RefreshCw, Clock, ExternalLink } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout';
 import { PartnerCard, PartnerCardSkeleton } from '@/components/rewards';
@@ -40,7 +40,11 @@ export default function RewardsPage() {
     code: string;
     partner: string;
     tier: string;
+    partnerSlug: string;
+    expiresAt: string | null;
   } | null>(null);
+  const [redemptionError, setRedemptionError] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   // Fetch data
   const {
@@ -71,6 +75,8 @@ export default function RewardsPage() {
   const handleRedeem = async () => {
     if (!selectedPartner || !selectedTier) return;
 
+    setRedemptionError(null);
+
     try {
       const result = await redeemMutation.mutateAsync({
         partnerSlug: selectedPartner.partnerSlug,
@@ -81,11 +87,48 @@ export default function RewardsPage() {
         code: result.data.code,
         partner: selectedPartner.name,
         tier: selectedTier.name,
+        partnerSlug: selectedPartner.partnerSlug,
+        expiresAt: result.data.redemption?.expiresAt || null,
       });
       setShowRedemptionModal(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Redemption failed:', error);
+      setRedemptionError(
+        error?.message || 'Failed to redeem reward. Please try again.'
+      );
     }
+  };
+
+  const handleCopyCode = async () => {
+    if (!redemptionResult?.code) return;
+    try {
+      await navigator.clipboard.writeText(redemptionResult.code);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy code:', err);
+    }
+  };
+
+  const handleRetryRedemption = () => {
+    setRedemptionError(null);
+    handleRedeem();
+  };
+
+  // Partner-specific activation instructions
+  const getActivationInstructions = (partnerSlug: string): string => {
+    const instructions: Record<string, string> = {
+      vercel: 'Visit vercel.com/account/billing, select "Add Credits", and enter your code.',
+      supabase: 'Go to supabase.com/dashboard/account/billing and apply your code in the "Credits" section.',
+      railway: 'Navigate to railway.app/account/billing and enter your code under "Add Credit".',
+      render: 'Visit dashboard.render.com/billing, click "Redeem Code", and paste your code.',
+      'fly-io': 'Go to fly.io/dashboard/billing and add your credit code in the billing section.',
+      sentry: 'Visit sentry.io/settings/billing/ and apply your promotional code.',
+      linear: 'Navigate to linear.app/settings/billing and redeem your code under "Add Credits".',
+      notion: 'Go to notion.so/settings-and-members/billing and enter your promo code.',
+    };
+    return instructions[partnerSlug] ||
+      `Visit the partner's website and navigate to their billing or credits section to apply your code.`;
   };
 
   const closeModals = () => {
@@ -93,6 +136,8 @@ export default function RewardsPage() {
     setSelectedPartner(null);
     setSelectedTier(null);
     setRedemptionResult(null);
+    setRedemptionError(null);
+    setCodeCopied(false);
   };
 
   return (
@@ -276,6 +321,15 @@ export default function RewardsPage() {
                   </div>
                 </div>
 
+                {/* 30-Day Expiration Notice */}
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+                  <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <div className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">Code expires in 30 days.</span>{' '}
+                    Use your code within this period or it will become invalid.
+                  </div>
+                </div>
+
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
@@ -284,6 +338,26 @@ export default function RewardsPage() {
                     non-refundable.
                   </AlertDescription>
                 </Alert>
+
+                {/* Error State */}
+                {redemptionError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Redemption Failed</AlertTitle>
+                    <AlertDescription className="flex flex-col gap-2">
+                      <span>{redemptionError}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRetryRedemption}
+                        className="w-fit"
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Try Again
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             )}
 
@@ -310,7 +384,7 @@ export default function RewardsPage() {
           open={!!redemptionResult}
           onOpenChange={(open) => !open && closeModals()}
         >
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="text-green-500 flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
@@ -327,32 +401,90 @@ export default function RewardsPage() {
                   <div className="text-sm text-muted-foreground mb-2">
                     {redemptionResult.partner} - {redemptionResult.tier}
                   </div>
-                  <div className="bg-muted p-4 rounded-lg">
+                  {/* Code Display with Copy Button */}
+                  <div className="bg-muted p-4 rounded-lg relative">
                     <div className="text-xs text-muted-foreground mb-1">
                       Your Code
                     </div>
-                    <div className="text-2xl font-mono font-bold tracking-wider">
+                    <div className="text-2xl font-mono font-bold tracking-wider mb-3">
                       {redemptionResult.code}
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyCode}
+                      className="w-full"
+                    >
+                      {codeCopied ? (
+                        <>
+                          <Check className="h-4 w-4 mr-2 text-green-500" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Copy Code
+                        </>
+                      )}
+                    </Button>
                   </div>
+                </div>
+
+                {/* Expiration Notice */}
+                {redemptionResult.expiresAt && (
+                  <div className="flex items-center gap-2 p-2 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-sm">
+                    <Clock className="h-4 w-4 flex-shrink-0" />
+                    <span>
+                      Expires: {new Date(redemptionResult.expiresAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </span>
+                  </div>
+                )}
+
+                {/* Email Confirmation */}
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <Mail className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  <div className="text-sm">
+                    <span className="font-medium text-green-600 dark:text-green-400">
+                      Email sent!
+                    </span>{' '}
+                    <span className="text-muted-foreground">
+                      A copy of your code has been sent to your email address.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Partner-Specific Activation Instructions */}
+                <div className="rounded-lg border p-4 space-y-2">
+                  <div className="flex items-center gap-2 font-medium text-sm">
+                    <ExternalLink className="h-4 w-4" />
+                    How to Activate
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {getActivationInstructions(redemptionResult.partnerSlug)}
+                  </p>
                 </div>
 
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    Copy this code and use it on the partner's website to
-                    activate your reward. This code has been saved to your
-                    account and can be viewed in "My Rewards".
+                    This code has been saved to your account and can be viewed
+                    anytime in "My Rewards".
                   </AlertDescription>
                 </Alert>
               </div>
             )}
 
-            <DialogFooter>
-              <Button variant="outline" asChild>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" asChild className="w-full sm:w-auto">
                 <a href="/rewards/mine">View My Rewards</a>
               </Button>
-              <Button onClick={closeModals}>Done</Button>
+              <Button onClick={closeModals} className="w-full sm:w-auto">
+                Done
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
