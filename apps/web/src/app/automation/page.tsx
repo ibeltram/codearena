@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+// Note: Zap is kept for potential future use in the hero section
 
 import { MainLayout } from '@/components/layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,14 +32,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -54,6 +47,7 @@ import {
   useRetryAutomationJob,
   useCreditBalance,
 } from '@/hooks';
+import { JobCreationWizard } from '@/components/automation/job-creation-wizard';
 import {
   AutomationJobType,
   AutomationTier,
@@ -147,7 +141,7 @@ function ServiceCard({
 
         <Button
           onClick={() => onSelect(jobType)}
-          disabled={!canAfford}
+          variant={canAfford ? 'default' : 'outline'}
           className="w-full"
         >
           {canAfford ? (
@@ -156,7 +150,7 @@ function ServiceCard({
             </>
           ) : (
             <>
-              Insufficient Credits
+              View Details <ArrowRight className="ml-2 h-4 w-4" />
             </>
           )}
         </Button>
@@ -569,56 +563,14 @@ export default function AutomationPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Create Job Dialog - Coming Soon Placeholder */}
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {selectedJobType && jobTypeIconMap[selectedJobType]}
-                Create {selectedJobType && jobTypeLabels[selectedJobType]} Job
-              </DialogTitle>
-              <DialogDescription>
-                Configure and submit a new automation job.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="py-6">
-              <Alert>
-                <Zap className="h-4 w-4" />
-                <AlertTitle>Coming Soon</AlertTitle>
-                <AlertDescription>
-                  The job creation wizard is under development. Soon you'll be able to
-                  configure and submit {selectedJobType && jobTypeLabels[selectedJobType].toLowerCase()} directly from here.
-                </AlertDescription>
-              </Alert>
-
-              {selectedJobType && pricing && (
-                <div className="mt-4 rounded-lg border p-4">
-                  <h4 className="font-medium mb-3">Pricing</h4>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(['small', 'medium', 'large'] as AutomationTier[]).map((tier) => (
-                      <div key={tier} className="text-center p-3 rounded-lg bg-muted">
-                        <div className="text-sm font-medium">{tierLabels[tier]}</div>
-                        <div className="flex items-center justify-center gap-1 mt-1">
-                          <Coins className="h-4 w-4 text-primary" />
-                          <span className="font-bold">
-                            {formatCreditsRequired(pricing[selectedJobType][tier])}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Job Creation Wizard */}
+        <JobCreationWizard
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          selectedJobType={selectedJobType}
+          pricing={pricing}
+          userBalance={userBalance}
+        />
       </div>
     </MainLayout>
   );
