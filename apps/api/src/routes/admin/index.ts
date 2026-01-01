@@ -4,6 +4,7 @@ import { adminChallengeRoutes } from './challenges';
 import { adminDisputeRoutes } from './disputes';
 import { adminUserRoutes } from './users';
 import { adminStatsRoutes } from './stats';
+import { adminReportRoutes } from './reports';
 
 export async function adminRoutes(app: FastifyInstance) {
   // Admin stats routes (dashboard statistics)
@@ -17,6 +18,9 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // Admin user management routes (role assignment, banning)
   await app.register(adminUserRoutes);
+
+  // Admin user report management routes
+  await app.register(adminReportRoutes);
 
   // TODO: Add other admin routes
   // await app.register(adminTournamentRoutes);

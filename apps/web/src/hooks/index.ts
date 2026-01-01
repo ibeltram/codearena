@@ -158,3 +158,12 @@ export {
   type BanUserInput,
   type UserActionResponse,
 } from './use-admin-users';
+export {
+  useAdminReports,
+  useAdminReport,
+  useReportStats,
+  useStartReportReview,
+  useUpdateReportStatus,
+  useResolveReport,
+  adminReportKeys,
+} from './use-admin-reports';

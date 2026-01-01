@@ -15,6 +15,7 @@ import { storageRoutes } from './storage';
 import { adminRoutes } from './admin';
 import { tournamentRoutes } from './tournaments';
 import { disputeRoutes } from './disputes';
+import { reportRoutes } from './reports';
 import ratingsRoutes from './ratings';
 import { rewardRoutes } from './rewards';
 import { adminAuditRoutes } from './admin-audit';
@@ -65,6 +66,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Dispute API routes
   await app.register(disputeRoutes);
+
+  // User report routes
+  await app.register(reportRoutes);
 
   // Ratings and leaderboard routes
   await app.register(ratingsRoutes, { prefix: '/api/ratings' });

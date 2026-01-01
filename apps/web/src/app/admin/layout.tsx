@@ -11,6 +11,7 @@ import {
   Shield,
   Gift,
   History,
+  Flag,
 } from 'lucide-react';
 
 import { Header } from '@/components/layout/header';
@@ -19,6 +20,7 @@ const adminNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/challenges', label: 'Challenges', icon: FileCode },
   { href: '/admin/disputes', label: 'Disputes', icon: AlertTriangle },
+  { href: '/admin/reports', label: 'User Reports', icon: Flag },
   { href: '/admin/prize-claims', label: 'Prize Claims', icon: Gift },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/audit', label: 'Audit Log', icon: History },

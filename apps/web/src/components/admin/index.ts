@@ -8,3 +8,4 @@ export { DisputeTable } from './dispute-table';
 export { PrizeClaimsTable } from './prize-claims-table';
 export { AuditTable } from './audit-table';
 export { UserTable } from './user-table';
+export { ReportTable } from './report-table';

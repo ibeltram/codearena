@@ -9,6 +9,23 @@ export const disputeTableStatusEnum = pgEnum('dispute_table_status', ['open', 'i
 // Moderation action type enum
 export const moderationActionTypeEnum = pgEnum('moderation_action_type', ['warn', 'suspend', 'ban']);
 
+// User report reason category enum
+export const userReportReasonEnum = pgEnum('user_report_reason', [
+  'cheating',              // Unfair play, match manipulation
+  'harassment',            // Abusive behavior, threats
+  'inappropriate_content', // Offensive profile, submissions
+  'spam',                  // Bot activity, promotional spam
+  'other',                 // Other concerns
+]);
+
+// User report status enum
+export const userReportStatusEnum = pgEnum('user_report_status', [
+  'pending',     // Awaiting moderator review
+  'in_review',   // Being reviewed by moderator
+  'resolved',    // Action taken or dismissed
+  'dismissed',   // No action needed
+]);
+
 // Audit event category enum
 export const auditEventCategoryEnum = pgEnum('audit_event_category', [
   'auth',           // Login, logout, token refresh
@@ -54,6 +71,33 @@ export const moderationActions = pgTable('moderation_actions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// User reports table - for users to report other users
+export const userReports = pgTable('user_reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  reporterUserId: uuid('reporter_user_id')
+    .notNull()
+    .references(() => users.id),
+  reportedUserId: uuid('reported_user_id')
+    .notNull()
+    .references(() => users.id),
+  reason: userReportReasonEnum('reason').notNull(),
+  description: text('description').notNull(),
+  evidenceJson: jsonb('evidence_json').notNull().default({}),
+  status: userReportStatusEnum('status').notNull().default('pending'),
+  reviewedByUserId: uuid('reviewed_by_user_id')
+    .references(() => users.id),
+  reviewNotes: text('review_notes'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  // Indexes for efficient querying
+  reporterUserIdIdx: index('user_reports_reporter_user_id_idx').on(table.reporterUserId),
+  reportedUserIdIdx: index('user_reports_reported_user_id_idx').on(table.reportedUserId),
+  statusIdx: index('user_reports_status_idx').on(table.status),
+  createdAtIdx: index('user_reports_created_at_idx').on(table.createdAt),
+}));
+
 // Audit events table - captures all sensitive operations
 export const eventsAudit = pgTable('events_audit', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -85,5 +129,9 @@ export type Dispute = typeof disputes.$inferSelect;
 export type NewDispute = typeof disputes.$inferInsert;
 export type ModerationAction = typeof moderationActions.$inferSelect;
 export type NewModerationAction = typeof moderationActions.$inferInsert;
+export type UserReport = typeof userReports.$inferSelect;
+export type NewUserReport = typeof userReports.$inferInsert;
+export type UserReportReason = 'cheating' | 'harassment' | 'inappropriate_content' | 'spam' | 'other';
+export type UserReportStatus = 'pending' | 'in_review' | 'resolved' | 'dismissed';
 export type EventAudit = typeof eventsAudit.$inferSelect;
 export type NewEventAudit = typeof eventsAudit.$inferInsert;

@@ -19,7 +19,9 @@ import {
   Settings,
   CheckCircle,
   Shield,
+  Flag,
 } from 'lucide-react';
+import { ReportUserDialog } from './report-user-dialog';
 
 interface ProfileHeaderProps {
   profile: UserProfile;
@@ -34,6 +36,7 @@ export function ProfileHeader({
 }: ProfileHeaderProps) {
   const { user, ranking, stats } = profile;
   const [copied, setCopied] = useState(false);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
 
   const rankTier = ranking ? getRankTier(ranking.rating) : null;
 
@@ -183,9 +186,31 @@ export function ProfileHeader({
               <Share2 className="h-4 w-4 mr-2" />
               {copied ? 'Copied!' : 'Share Profile'}
             </Button>
+            {/* Report button - only show on other users' profiles */}
+            {!isOwnProfile && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setReportDialogOpen(true)}
+                className="justify-start text-muted-foreground hover:text-red-600"
+              >
+                <Flag className="h-4 w-4 mr-2" />
+                Report User
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
+
+      {/* Report User Dialog */}
+      {!isOwnProfile && (
+        <ReportUserDialog
+          userId={user.id}
+          userName={user.displayName}
+          isOpen={reportDialogOpen}
+          onOpenChange={setReportDialogOpen}
+        />
+      )}
     </Card>
   );
 }
