@@ -46,10 +46,10 @@ export const creditHolds = pgTable('credit_holds', {
     .notNull()
     .references(() => creditAccounts.id, { onDelete: 'cascade' }),
   matchId: uuid('match_id')
-    .notNull()
-    .references(() => matches.id),
+    .references(() => matches.id),  // Nullable for non-match holds (e.g., automation)
   amountReserved: integer('amount_reserved').notNull(),
   status: creditHoldStatusEnum('status').notNull().default('active'),
+  reason: varchar('reason', { length: 255 }), // Description for non-match holds
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   releasedAt: timestamp('released_at', { withTimezone: true }),
 });

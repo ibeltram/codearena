@@ -9,3 +9,4 @@ export * from './rankings';
 export * from './tournaments';
 export * from './moderation';
 export * from './rewards';
+export * from './automation';

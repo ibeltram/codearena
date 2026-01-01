@@ -71,6 +71,7 @@ export const QUEUE_NAMES = {
   NOTIFICATIONS: 'notifications',
   SETTLEMENT: 'settlement',
   CLEANUP: 'cleanup',
+  AUTOMATION: 'automation',
 } as const;
 
 // Job types and their data interfaces
@@ -105,6 +106,15 @@ export interface CleanupJobData extends BaseJobData {
   dryRun?: boolean;
 }
 
+export interface AutomationJobData extends BaseJobData {
+  jobId: string;         // Reference to automation_jobs table
+  userId: string;
+  jobType: 'batch_run' | 'eval_pipeline' | 'ci_check' | 'multi_model_compare' | 'agent_job';
+  tier: 'small' | 'medium' | 'large';
+  config: Record<string, unknown>;
+  priority?: number;
+}
+
 // Job result types
 export interface JudgingJobResult {
   submissionId: string;
@@ -119,6 +129,19 @@ export interface SettlementJobResult {
   settled: boolean;
   winnerUserId?: string;
   platformFee?: number;
+}
+
+export interface AutomationJobResult {
+  jobId: string;
+  status: 'completed' | 'failed' | 'timeout';
+  totalSteps: number;
+  completedSteps: number;
+  passedSteps?: number;
+  failedSteps?: number;
+  aggregateScore?: number;
+  outputArtifactId?: string;
+  executionTimeMs: number;
+  errorMessage?: string;
 }
 
 // Default job options
@@ -557,6 +580,127 @@ export function createCleanupWorker(
 
   workers.set(QUEUE_NAMES.CLEANUP, worker);
   return worker;
+}
+
+// ============================================================
+// Automation Queue
+// ============================================================
+
+/**
+ * Add an automation job to the queue
+ * Automatically injects correlation ID metadata from current request context
+ */
+export async function addAutomationJob(
+  data: AutomationJobData,
+  options?: { priority?: number; delay?: number }
+): Promise<Job<AutomationJobData>> {
+  const queue = getQueue<AutomationJobData>(QUEUE_NAMES.AUTOMATION);
+  const dataWithMetadata = injectJobMetadata(data);
+
+  // Priority: 1-10 where 1 is highest
+  // Large tier gets higher priority
+  const tierPriority = data.tier === 'large' ? 3 : data.tier === 'medium' ? 5 : 7;
+
+  logger.info(
+    {
+      jobId: data.jobId,
+      userId: data.userId,
+      jobType: data.jobType,
+      tier: data.tier,
+      requestId: dataWithMetadata._metadata?.requestId,
+    },
+    'Adding automation job to queue'
+  );
+
+  return queue.add(`automation-${data.jobType}`, dataWithMetadata, {
+    priority: options?.priority ?? tierPriority,
+    delay: options?.delay,
+    jobId: `automation-${data.jobId}`, // Prevent duplicate processing
+  });
+}
+
+/**
+ * Create automation worker
+ * Wraps processor with context-aware logging and correlation ID propagation
+ */
+export function createAutomationWorker(
+  processor: (job: Job<AutomationJobData>) => Promise<AutomationJobResult>
+): Worker<AutomationJobData, AutomationJobResult> {
+  const wrappedProcessor = wrapProcessor(processor);
+
+  const worker = new Worker<AutomationJobData, AutomationJobResult>(
+    QUEUE_NAMES.AUTOMATION,
+    wrappedProcessor,
+    {
+      connection,
+      concurrency: 3, // Run 3 automation jobs in parallel
+      limiter: {
+        max: 20,
+        duration: 60000, // Max 20 jobs per minute
+      },
+    }
+  );
+
+  worker.on('completed', (job, result) => {
+    const jobLogger = createJobLogger(job);
+    jobLogger.info(
+      {
+        jobId: result.jobId,
+        status: result.status,
+        completedSteps: result.completedSteps,
+        totalSteps: result.totalSteps,
+        executionTimeMs: result.executionTimeMs,
+      },
+      'Automation job completed'
+    );
+  });
+
+  worker.on('failed', (job, err) => {
+    if (job) {
+      const jobLogger = createJobLogger(job);
+      jobLogger.error({ err, jobId: job.data.jobId }, 'Automation job failed');
+    } else {
+      logger.error({ err }, 'Automation job failed (job unavailable)');
+    }
+  });
+
+  worker.on('progress', (job, progress) => {
+    const jobLogger = createJobLogger(job);
+    jobLogger.debug({ jobId: job.data.jobId, progress }, 'Automation job progress');
+  });
+
+  worker.on('error', (err) => {
+    logger.error({ err, queue: QUEUE_NAMES.AUTOMATION }, 'Automation worker error');
+  });
+
+  workers.set(QUEUE_NAMES.AUTOMATION, worker);
+  return worker;
+}
+
+/**
+ * Get automation job from queue by ID
+ */
+export async function getAutomationJob(
+  jobId: string
+): Promise<Job<AutomationJobData> | undefined> {
+  return getJob<AutomationJobData>(QUEUE_NAMES.AUTOMATION, `automation-${jobId}`);
+}
+
+/**
+ * Cancel an automation job
+ */
+export async function cancelAutomationJob(jobId: string): Promise<boolean> {
+  const job = await getAutomationJob(jobId);
+  if (job) {
+    const state = await job.getState();
+    if (state === 'waiting' || state === 'delayed') {
+      await job.remove();
+      return true;
+    }
+    // Can't cancel active jobs easily, but we can mark for cancellation
+    // The worker would need to check for cancellation flag
+  }
+  return false;
 }
 
 // ============================================================

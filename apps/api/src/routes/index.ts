@@ -19,6 +19,7 @@ import { reportRoutes } from './reports';
 import ratingsRoutes from './ratings';
 import { rewardRoutes } from './rewards';
 import { adminAuditRoutes } from './admin-audit';
+import { automationRoutes } from './automation';
 import { initializeMatchEvents } from '../lib/match-events';
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -81,4 +82,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Admin audit log routes
   await app.register(adminAuditRoutes);
+
+  // Automation services routes (Phase 10)
+  await app.register(automationRoutes);
 }
