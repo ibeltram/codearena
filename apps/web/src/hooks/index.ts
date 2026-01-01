@@ -179,3 +179,17 @@ export {
   adminReportKeys,
 } from './use-admin-reports';
 export { useStakeCap, stakeCapKeys } from './use-stake-cap';
+export {
+  useAutomationPricing,
+  useAutomationJobs,
+  useAutomationJob,
+  useAutomationJobResults,
+  useCreateAutomationJob,
+  useCancelAutomationJob,
+  useRetryAutomationJob,
+  useAutomationTemplates,
+  useCreateAutomationTemplate,
+  useUpdateAutomationTemplate,
+  useDeleteAutomationTemplate,
+  automationKeys,
+} from './use-automation';

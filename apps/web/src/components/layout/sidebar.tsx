@@ -15,6 +15,7 @@ import {
   Shield,
   Medal,
   Gift,
+  Zap,
   X,
 } from 'lucide-react';
 
@@ -35,6 +36,7 @@ const mainNavItems = [
 const userNavItems = [
   { href: '/wallet', label: 'Wallet', icon: Wallet },
   { href: '/rewards', label: 'Rewards', icon: Gift },
+  { href: '/automation', label: 'Automation', icon: Zap },
   { href: '/profile', label: 'Profile', icon: User },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -146,9 +148,9 @@ export function Sidebar() {
               <Separator className="my-4" />
               <div className="space-y-1">
                 {userNavItems.map((item) => {
-                  // Use startsWith for routes with subroutes (e.g., /rewards/mine)
-                  const isActive = item.href === '/rewards'
-                    ? pathname.startsWith('/rewards')
+                  // Use startsWith for routes with subroutes (e.g., /rewards/mine, /automation/jobs)
+                  const isActive = ['/rewards', '/automation'].includes(item.href)
+                    ? pathname.startsWith(item.href)
                     : pathname === item.href;
                   return (
                     <Link
