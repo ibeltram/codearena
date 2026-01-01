@@ -2,6 +2,7 @@ export { ChallengeTable } from './challenge-table';
 export { ChallengeForm } from './challenge-form';
 export { RequirementsBuilder } from './requirements-builder';
 export { RubricEditor } from './rubric-editor';
+export { TemplateManager } from './template-manager';
 export { VersionEditor } from './version-editor';
 export { ChallengePreview } from './challenge-preview';
 export { DisputeTable } from './dispute-table';

@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { RequirementsBuilder } from './requirements-builder';
 import { RubricEditor } from './rubric-editor';
+import { TemplateManager } from './template-manager';
 import {
   ChallengeRequirement,
   RubricCriterion,
@@ -108,28 +109,21 @@ export function VersionEditor({
         onChange={setRubric}
       />
 
-      {/* Template & Judge References */}
+      {/* Template Manager */}
+      <TemplateManager
+        templateRef={templateRef}
+        onChange={setTemplateRef}
+      />
+
+      {/* Judge Image Reference */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <LinkIcon className="h-4 w-4" />
-            References
+            Judge Configuration
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="templateRef">Template Repository / File</Label>
-            <Input
-              id="templateRef"
-              placeholder="https://github.com/org/template-repo or S3 URL"
-              value={templateRef}
-              onChange={(e) => setTemplateRef(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Link to starter template that participants will fork/download
-            </p>
-          </div>
-
+        <CardContent>
           <div className="space-y-2">
             <Label htmlFor="judgeImageRef">Judge Image Reference</Label>
             <Input
