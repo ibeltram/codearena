@@ -1688,42 +1688,75 @@ export async function matchRoutes(app: FastifyInstance) {
     }
 
     // Build file comparison if both have artifacts
-    let comparison = null;
+    // Returns structure matching frontend MatchComparison type
+    type FileDiffStatus = 'unchanged' | 'modified' | 'added' | 'removed';
+    interface CompareFile {
+      path: string;
+      status: FileDiffStatus;
+      leftFile?: { path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean };
+      rightFile?: { path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean };
+    }
+    interface ArtifactComparison {
+      leftArtifact: typeof participantsWithArtifacts[0]['artifact'];
+      rightArtifact: typeof participantsWithArtifacts[1]['artifact'];
+      files: CompareFile[];
+      summary: {
+        unchanged: number;
+        modified: number;
+        added: number;
+        removed: number;
+      };
+    }
+
+    let comparison: ArtifactComparison | null = null;
     if (participantsWithArtifacts[0].artifact && participantsWithArtifacts[1].artifact) {
-      const leftManifest = participantsWithArtifacts[0].artifact.manifestJson as { files?: Array<{ path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean }> } | null;
-      const rightManifest = participantsWithArtifacts[1].artifact.manifestJson as { files?: Array<{ path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean }> } | null;
+      const leftArtifact = participantsWithArtifacts[0].artifact;
+      const rightArtifact = participantsWithArtifacts[1].artifact;
+
+      const leftManifest = leftArtifact.manifestJson as { files?: Array<{ path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean }> } | null;
+      const rightManifest = rightArtifact.manifestJson as { files?: Array<{ path: string; size: number; hash: string; isText?: boolean; isBinary?: boolean }> } | null;
 
       const leftFiles = leftManifest?.files || [];
       const rightFiles = rightManifest?.files || [];
 
-      const leftPaths = new Set(leftFiles.map((f) => f.path));
-      const rightPaths = new Set(rightFiles.map((f) => f.path));
+      const leftFilesMap = new Map(leftFiles.map((f) => [f.path, f]));
+      const rightFilesMap = new Map(rightFiles.map((f) => [f.path, f]));
 
-      const added = rightFiles.filter((f) => !leftPaths.has(f.path)).map((f) => f.path);
-      const removed = leftFiles.filter((f) => !rightPaths.has(f.path)).map((f) => f.path);
-      const modified: string[] = [];
-      const unchanged: string[] = [];
+      const allPaths = new Set([...leftFilesMap.keys(), ...rightFilesMap.keys()]);
+      const files: CompareFile[] = [];
+      const summary = { unchanged: 0, modified: 0, added: 0, removed: 0 };
 
-      for (const leftFile of leftFiles) {
-        if (rightPaths.has(leftFile.path)) {
-          const rightFile = rightFiles.find((f) => f.path === leftFile.path);
-          if (rightFile && leftFile.hash !== rightFile.hash) {
-            modified.push(leftFile.path);
-          } else {
-            unchanged.push(leftFile.path);
-          }
+      for (const path of allPaths) {
+        const leftFile = leftFilesMap.get(path);
+        const rightFile = rightFilesMap.get(path);
+
+        let status: FileDiffStatus;
+        if (leftFile && rightFile) {
+          status = leftFile.hash === rightFile.hash ? 'unchanged' : 'modified';
+        } else if (leftFile) {
+          status = 'removed';
+        } else {
+          status = 'added';
         }
+
+        summary[status]++;
+        files.push({ path, status, leftFile, rightFile });
       }
 
+      // Sort: modified first, then added, removed, unchanged - all alphabetically within
+      files.sort((a, b) => {
+        const order = { modified: 0, added: 1, removed: 2, unchanged: 3 };
+        if (order[a.status] !== order[b.status]) {
+          return order[a.status] - order[b.status];
+        }
+        return a.path.localeCompare(b.path);
+      });
+
       comparison = {
-        added,
-        removed,
-        modified,
-        unchanged,
-        totalFiles: {
-          left: leftFiles.length,
-          right: rightFiles.length,
-        },
+        leftArtifact,
+        rightArtifact,
+        files,
+        summary,
       };
     }
 
