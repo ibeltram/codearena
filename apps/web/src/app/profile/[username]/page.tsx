@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { MainLayout } from '@/components/layout/main-layout';
 import {
@@ -9,7 +9,7 @@ import {
   StatsCard,
   BadgesCard,
 } from '@/components/profile';
-import { useUserProfile, useUserMatchHistory, useTogglePublicArtifacts } from '@/hooks/use-profile';
+import { useUserProfile, useUserMatchHistory, useTogglePublicArtifacts, useUpdateProfile } from '@/hooks/use-profile';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,12 +17,15 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   User,
@@ -32,6 +35,7 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
+  Loader2,
 } from 'lucide-react';
 import { useAuthStore } from '@/store';
 
@@ -73,8 +77,13 @@ export default function ProfilePage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [matchPage, setMatchPage] = useState(1);
 
+  // Edit form state
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+
   // Get current user from auth store
-  const { user: currentUser, isAuthenticated } = useAuthStore();
+  const { user: currentUser, isAuthenticated, setUser } = useAuthStore();
 
   // Fetch profile data from API
   const { data: profile, isLoading, isError } = useUserProfile(username);
@@ -82,6 +91,16 @@ export default function ProfilePage() {
   const matches = matchesData?.data || [];
 
   const togglePublicArtifacts = useTogglePublicArtifacts();
+  const updateProfile = useUpdateProfile();
+
+  // Initialize form when profile loads or dialog opens
+  useEffect(() => {
+    if (profile?.user && editDialogOpen) {
+      setEditDisplayName(profile.user.displayName || '');
+      setEditAvatarUrl(profile.user.avatarUrl || '');
+      setEditError(null);
+    }
+  }, [profile?.user, editDialogOpen]);
 
   // Check if viewing own profile by comparing with auth user
   const isOwnProfile = useMemo(() => {
@@ -255,23 +274,130 @@ export default function ProfilePage() {
 
         {/* Edit Profile Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Edit Profile</DialogTitle>
               <DialogDescription>
                 Update your display name and avatar.
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-              <p className="text-sm text-muted-foreground text-center">
-                Profile editing coming soon!
-              </p>
-            </div>
-            <div className="flex justify-end">
-              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                Close
-              </Button>
-            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setEditError(null);
+
+                // Validate
+                if (!editDisplayName.trim()) {
+                  setEditError('Display name is required');
+                  return;
+                }
+                if (editDisplayName.trim().length < 2) {
+                  setEditError('Display name must be at least 2 characters');
+                  return;
+                }
+                if (editAvatarUrl && !editAvatarUrl.match(/^https?:\/\/.+/)) {
+                  setEditError('Avatar URL must be a valid URL');
+                  return;
+                }
+
+                try {
+                  const result = await updateProfile.mutateAsync({
+                    displayName: editDisplayName.trim(),
+                    avatarUrl: editAvatarUrl.trim() || undefined,
+                  });
+
+                  // Update auth store if the user data is returned
+                  if (result?.data && currentUser) {
+                    setUser({
+                      ...currentUser,
+                      displayName: result.data.displayName,
+                      avatarUrl: result.data.avatarUrl || null,
+                    });
+                  }
+
+                  setEditDialogOpen(false);
+                } catch (error) {
+                  setEditError('Failed to update profile. Please try again.');
+                  console.error('Profile update error:', error);
+                }
+              }}
+            >
+              <div className="space-y-6 py-4">
+                {/* Avatar Preview */}
+                <div className="flex justify-center">
+                  <Avatar className="h-20 w-20 border-2 border-muted">
+                    <AvatarImage src={editAvatarUrl || undefined} alt="Avatar preview" />
+                    <AvatarFallback className="text-xl font-bold bg-primary text-primary-foreground">
+                      {editDisplayName
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')
+                        .toUpperCase()
+                        .slice(0, 2) || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+
+                {/* Display Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="displayName">Display Name</Label>
+                  <Input
+                    id="displayName"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    placeholder="Your display name"
+                    maxLength={100}
+                    autoComplete="name"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This is how your name will appear on the platform.
+                  </p>
+                </div>
+
+                {/* Avatar URL */}
+                <div className="space-y-2">
+                  <Label htmlFor="avatarUrl">Avatar URL (optional)</Label>
+                  <Input
+                    id="avatarUrl"
+                    value={editAvatarUrl}
+                    onChange={(e) => setEditAvatarUrl(e.target.value)}
+                    placeholder="https://example.com/avatar.png"
+                    type="url"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter a URL to an image for your profile picture.
+                  </p>
+                </div>
+
+                {/* Error message */}
+                {editError && (
+                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                    <p className="text-sm text-destructive">{editError}</p>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditDialogOpen(false)}
+                  disabled={updateProfile.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateProfile.isPending}>
+                  {updateProfile.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
