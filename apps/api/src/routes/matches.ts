@@ -36,6 +36,11 @@ import {
   removeUserFromQueues,
   getQueueStats,
 } from '../lib/matchmaking';
+import {
+  checkOpponentThrottle,
+  getDailyOpponentLimit,
+  getOpponentThrottleStatus,
+} from '../lib/opponent-throttle';
 
 const {
   matches,
@@ -922,14 +927,25 @@ export async function matchRoutes(app: FastifyInstance) {
       throw new ConflictError('Already joined this match');
     }
 
-    // Check if match is full (2 participants max)
-    const participantCount = await db
-      .select({ count: count() })
+    // Check if match is full (2 participants max) and get existing participant
+    const existingParticipants = await db
+      .select({
+        userId: matchParticipants.userId,
+      })
       .from(matchParticipants)
       .where(eq(matchParticipants.matchId, matchId));
 
-    if ((participantCount[0]?.count ?? 0) >= 2) {
+    if (existingParticipants.length >= 2) {
       throw new ConflictError('Match is already full');
+    }
+
+    // Check opponent throttle - limit matches against same opponent per day
+    if (existingParticipants.length > 0) {
+      const opponentId = existingParticipants[0].userId;
+      const throttleCheck = await checkOpponentThrottle(userId, opponentId);
+      if (!throttleCheck.allowed) {
+        throw new ConflictError(throttleCheck.reason || 'Daily match limit reached against this opponent');
+      }
     }
 
     // Get stake amount from config hash (simplified - in production would be stored properly)
@@ -1770,5 +1786,45 @@ export async function matchRoutes(app: FastifyInstance) {
       rightParticipant,
       comparison,
     };
+  });
+
+  // GET /api/matches/opponent-throttle - Get opponent throttle status for current user
+  app.get('/api/matches/opponent-throttle', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const status = await getOpponentThrottleStatus(userId);
+
+    return reply.status(200).send({
+      userId,
+      dailyLimit: getDailyOpponentLimit(),
+      throttledOpponents: status.throttledOpponents,
+    });
+  });
+
+  // GET /api/matches/opponent-throttle/:opponentId - Check throttle against specific opponent
+  app.get('/api/matches/opponent-throttle/:opponentId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = getUserId(request);
+
+    const opponentIdSchema = z.object({
+      opponentId: z.string().uuid(),
+    });
+
+    const paramResult = opponentIdSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid opponent ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { opponentId } = paramResult.data;
+
+    const throttleCheck = await checkOpponentThrottle(userId, opponentId);
+
+    return reply.status(200).send({
+      userId,
+      opponentId,
+      ...throttleCheck,
+    });
   });
 }

@@ -16,6 +16,7 @@
 import { getRedis, STATE_PREFIX, publish, CHANNELS, acquireLock, releaseLock } from './redis';
 import { getPlayerRating } from './rating-service';
 import type { RatingTier } from './glicko2';
+import { checkOpponentThrottle } from './opponent-throttle';
 
 // Queue configuration
 export const QUEUE_CONFIG = {
@@ -306,6 +307,13 @@ export async function findMatch(
     const candidateRange = getRatingRange(candidateEntry.joinedAt);
     if (Math.abs(candidateEntry.rating - entry.rating) > candidateRange) {
       // Candidate's range hasn't expanded enough yet
+      continue;
+    }
+
+    // Check opponent throttle - skip if daily limit reached against this opponent
+    const throttleCheck = await checkOpponentThrottle(entry.userId, candidateEntry.userId);
+    if (!throttleCheck.allowed) {
+      // Skip this candidate due to daily limit
       continue;
     }
 
