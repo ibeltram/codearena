@@ -18,6 +18,79 @@ let isAuthenticated = false;
 let currentUserId: string | null = null;
 
 /**
+ * Fetch match history from API
+ */
+async function fetchMatchHistory(): Promise<void> {
+  if (!currentUserId) {
+    historyProvider.setMatches([]);
+    return;
+  }
+
+  historyProvider.setLoading(true);
+
+  try {
+    const config = getConfig();
+    const token = await authService.getAccessToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${config.apiUrl}/api/users/${currentUserId}/matches?limit=50`, {
+      headers,
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as {
+        data?: Array<{
+          id: string;
+          status: string;
+          mode: string;
+          challenge: {
+            title: string;
+            category: string;
+            slug: string;
+          };
+          opponent?: {
+            id: string;
+            displayName: string;
+            avatarUrl: string | null;
+          };
+          userScore: number | null;
+          opponentScore: number | null;
+          result: 'win' | 'loss' | 'draw' | 'pending';
+          startAt: string | null;
+          endAt: string | null;
+          createdAt: string;
+        }>;
+      };
+
+      // Map API response to MatchHistoryItem type
+      const matches: MatchHistoryItem[] = (data.data || []).map((m) => ({
+        id: m.id,
+        challengeTitle: m.challenge.title,
+        category: m.challenge.category as MatchHistoryItem['category'],
+        difficulty: 'medium' as MatchHistoryItem['difficulty'], // API doesn't return difficulty in history
+        opponentUsername: m.opponent?.displayName || 'Unknown',
+        result: m.result === 'pending' ? 'in_progress' : m.result,
+        score: m.userScore ?? undefined,
+        opponentScore: m.opponentScore ?? undefined,
+        completedAt: m.endAt ?? undefined,
+      }));
+
+      historyProvider.setMatches(matches);
+    } else {
+      historyProvider.setError('Failed to load match history');
+    }
+  } catch (error) {
+    console.error('Failed to fetch match history:', error);
+    historyProvider.setError('Network error - check connection');
+  } finally {
+    historyProvider.setLoading(false);
+  }
+}
+
+/**
  * Get extension configuration
  */
 function getConfig(): ExtensionConfig {
@@ -62,8 +135,9 @@ function registerCommands(context: vscode.ExtensionContext): void {
         matchProvider.setCurrentUserId(currentUserId);
       }
 
-      // Refresh challenges
+      // Refresh challenges and match history
       vscode.commands.executeCommand('reporivals.refreshChallenges');
+      fetchMatchHistory();
     }
   });
 
@@ -526,6 +600,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
     challengesProvider.toggleGroupByCategory();
   });
 
+  // Refresh Match History
+  const refreshHistory = vscode.commands.registerCommand('reporivals.refreshHistory', async () => {
+    if (!isAuthenticated || !currentUserId) {
+      vscode.window.showWarningMessage('RepoRivals: Please sign in to view match history.');
+      return;
+    }
+    await fetchMatchHistory();
+  });
+
   // Show Active Match Panel
   const showActiveMatchPanel = vscode.commands.registerCommand(
     'reporivals.showActiveMatchPanel',
@@ -597,6 +680,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
     filterChallenges,
     openChallengeInWeb,
     toggleGrouping,
+    refreshHistory,
     showActiveMatchPanel,
     setReady,
     forfeit
@@ -722,8 +806,9 @@ export function activate(context: vscode.ExtensionContext) {
         if (tokens) {
           currentUserId = tokens.userId;
           matchProvider.setCurrentUserId(currentUserId);
-          // Refresh challenges on successful auto-login
+          // Refresh challenges and match history on successful auto-login
           vscode.commands.executeCommand('reporivals.refreshChallenges');
+          fetchMatchHistory();
         }
       });
     }

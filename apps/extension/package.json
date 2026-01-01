@@ -78,6 +78,11 @@
       {
         "command": "reporivals.forfeit",
         "title": "RepoRivals: Forfeit Match"
+      },
+      {
+        "command": "reporivals.refreshHistory",
+        "title": "RepoRivals: Refresh Match History",
+        "icon": "$(refresh)"
       }
     ],
     "viewsContainers": {
@@ -190,6 +195,11 @@
           "command": "reporivals.signIn",
           "when": "view == reporivals-challenges && !reporivals.isAuthenticated",
           "group": "navigation@4"
+        },
+        {
+          "command": "reporivals.refreshHistory",
+          "when": "view == reporivals-history",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
