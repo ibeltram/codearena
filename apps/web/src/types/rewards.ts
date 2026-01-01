@@ -80,6 +80,46 @@ export interface RedeemRewardResponse {
   };
 }
 
+// Leaderboard Types
+export type LeaderboardType = 'weekly' | 'season' | 'category';
+export type LeaderboardPayoutStatus = 'pending' | 'issued' | 'claimed';
+
+export interface LeaderboardPayout {
+  id: string;
+  userId: string;
+  leaderboardType: LeaderboardType;
+  periodStart: string;
+  periodEnd: string;
+  rank: number;
+  rewardValue: number;
+  rewardDescription: string;
+  status: LeaderboardPayoutStatus;
+  createdAt: string;
+}
+
+export interface LeaderboardPayoutsResponse {
+  data: LeaderboardPayout[];
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}
+
+export interface LeaderboardPayoutHistoryResponse {
+  data: LeaderboardPayout[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ClaimLeaderboardRewardResponse {
+  data: LeaderboardPayout;
+}
+
 // Filters
 export interface RewardFilters {
   rewardType?: RewardType;
@@ -87,6 +127,14 @@ export interface RewardFilters {
 
 export interface RedemptionFilters {
   status?: RewardRedemptionStatus;
+  partnerSlug?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface LeaderboardPayoutFilters {
+  status?: LeaderboardPayoutStatus;
+  type?: LeaderboardType;
   limit?: number;
   offset?: number;
 }
@@ -139,3 +187,22 @@ export function getTierAvailabilityStatus(available: number | undefined): {
   }
   return { label: 'Out of stock', color: 'text-red-500' };
 }
+
+// Leaderboard display helpers
+export const leaderboardTypeLabels: Record<LeaderboardType, string> = {
+  weekly: 'Weekly',
+  season: 'Season',
+  category: 'Category',
+};
+
+export const leaderboardPayoutStatusLabels: Record<LeaderboardPayoutStatus, string> = {
+  pending: 'Pending',
+  issued: 'Issued',
+  claimed: 'Claimed',
+};
+
+export const leaderboardPayoutStatusColors: Record<LeaderboardPayoutStatus, string> = {
+  pending: 'bg-yellow-500',
+  issued: 'bg-blue-500',
+  claimed: 'bg-green-500',
+};

@@ -10,6 +10,10 @@ import {
   RedeemRewardResponse,
   RewardFilters,
   RedemptionFilters,
+  LeaderboardPayoutsResponse,
+  LeaderboardPayoutHistoryResponse,
+  LeaderboardPayoutFilters,
+  ClaimLeaderboardRewardResponse,
 } from '@/types/rewards';
 import { walletKeys } from './use-wallet';
 
@@ -26,6 +30,10 @@ export const rewardsKeys = {
     [...rewardsKeys.redemptions(), filters] as const,
   redemptionDetail: (id: string) =>
     [...rewardsKeys.redemptions(), 'detail', id] as const,
+  leaderboard: () => [...rewardsKeys.all, 'leaderboard'] as const,
+  leaderboardCurrent: () => [...rewardsKeys.leaderboard(), 'current'] as const,
+  leaderboardHistory: (filters: LeaderboardPayoutFilters) =>
+    [...rewardsKeys.leaderboard(), 'history', filters] as const,
 };
 
 /**
@@ -119,5 +127,63 @@ export function useRedeemReward() {
       queryClient.invalidateQueries({ queryKey: walletKeys.balance() });
       queryClient.invalidateQueries({ queryKey: walletKeys.history() });
     },
+  });
+}
+
+/**
+ * Hook to fetch current period leaderboard rewards (pending to claim)
+ */
+export function useLeaderboardRewards() {
+  return useQuery({
+    queryKey: rewardsKeys.leaderboardCurrent(),
+    queryFn: () => api.get<LeaderboardPayoutsResponse>('/api/rewards/leaderboard'),
+    staleTime: 60 * 1000, // 1 minute
+  });
+}
+
+/**
+ * Hook to fetch leaderboard rewards history
+ */
+export function useLeaderboardRewardsHistory(filters: LeaderboardPayoutFilters = {}) {
+  const queryParams = new URLSearchParams();
+
+  if (filters.status) queryParams.set('status', filters.status);
+  if (filters.type) queryParams.set('type', filters.type);
+  if (filters.limit) queryParams.set('limit', String(filters.limit));
+  if (filters.offset) queryParams.set('offset', String(filters.offset));
+
+  const queryString = queryParams.toString();
+  const endpoint = `/api/rewards/leaderboard/history${queryString ? `?${queryString}` : ''}`;
+
+  return useQuery({
+    queryKey: rewardsKeys.leaderboardHistory(filters),
+    queryFn: () => api.get<LeaderboardPayoutHistoryResponse>(endpoint),
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * Hook to claim a leaderboard reward
+ */
+export function useClaimLeaderboardReward() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payoutId: string) =>
+      api.post<ClaimLeaderboardRewardResponse>(`/api/rewards/leaderboard/${payoutId}/claim`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: rewardsKeys.leaderboard() });
+      queryClient.invalidateQueries({ queryKey: walletKeys.balance() });
+    },
+  });
+}
+
+/**
+ * Hook to resend a redemption code to email
+ */
+export function useResendRedemptionCode() {
+  return useMutation({
+    mutationFn: (redemptionId: string) =>
+      api.post<{ success: boolean }>(`/api/rewards/redemptions/${redemptionId}/resend`, {}),
   });
 }

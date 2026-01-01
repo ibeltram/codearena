@@ -183,6 +183,10 @@ export default function RewardsPage() {
               <Button variant="outline" asChild>
                 <a href="/wallet">Add Credits</a>
               </Button>
+
+              <Button variant="outline" asChild>
+                <a href="/rewards/mine">My Rewards</a>
+              </Button>
             </div>
           </div>
         </div>

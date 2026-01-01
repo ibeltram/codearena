@@ -96,6 +96,10 @@ export {
   useRewardRedemptions,
   useRewardRedemption,
   useRedeemReward,
+  useLeaderboardRewards,
+  useLeaderboardRewardsHistory,
+  useClaimLeaderboardReward,
+  useResendRedemptionCode,
   rewardsKeys,
 } from './use-rewards';
 export {
