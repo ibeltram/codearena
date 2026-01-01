@@ -1,12 +1,14 @@
 'use client';
 
-import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, FileCode, Bot, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import {
   ChallengeRequirement,
   RubricCriterion,
@@ -216,6 +218,97 @@ export function RubricEditor({ requirements, rubric, onChange }: RubricEditorPro
                           ))}
                         </div>
                       </div>
+
+                      {/* Test file pattern - shown for test_pass, file_exists, output_match */}
+                      {['test_pass', 'file_exists', 'output_match'].includes(criterion.evidenceType) && (
+                        <div className="space-y-2 pt-2 border-t border-border/50">
+                          <Label className="text-sm flex items-center gap-2">
+                            <FileCode className="h-4 w-4" />
+                            Test File Pattern
+                          </Label>
+                          <Input
+                            placeholder={
+                              criterion.evidenceType === 'test_pass'
+                                ? 'e.g., **/*.test.ts, tests/unit/*.spec.js'
+                                : criterion.evidenceType === 'file_exists'
+                                ? 'e.g., src/index.ts, package.json'
+                                : 'e.g., output.txt, results/*.json'
+                            }
+                            value={(criterion.evidenceConfig?.testFilePattern as string) || ''}
+                            onChange={(e) =>
+                              updateCriterion(criterion.id, {
+                                evidenceConfig: {
+                                  ...criterion.evidenceConfig,
+                                  testFilePattern: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            {criterion.evidenceType === 'test_pass' &&
+                              'Glob pattern to match test files that must pass'}
+                            {criterion.evidenceType === 'file_exists' &&
+                              'Files or patterns that must exist in the submission'}
+                            {criterion.evidenceType === 'output_match' &&
+                              'Expected output file to compare against'}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* AI Judge Prompt - shown for ai_review */}
+                      {criterion.evidenceType === 'ai_review' && (
+                        <div className="space-y-2 pt-2 border-t border-border/50">
+                          <Label className="text-sm flex items-center gap-2">
+                            <Bot className="h-4 w-4" />
+                            AI Judge Prompt
+                          </Label>
+                          <Textarea
+                            placeholder="Enter specific instructions for the AI judge to evaluate this criterion. Be specific about what to look for, scoring guidelines, and any patterns to check."
+                            className="min-h-[100px] resize-y"
+                            value={(criterion.evidenceConfig?.aiPrompt as string) || ''}
+                            onChange={(e) =>
+                              updateCriterion(criterion.id, {
+                                evidenceConfig: {
+                                  ...criterion.evidenceConfig,
+                                  aiPrompt: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                          <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                            <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span>
+                              The AI judge will receive the code, this criterion's title/description,
+                              and your custom prompt. Be specific about scoring rubric (0-{criterion.maxPoints} points).
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Code analysis config - shown for code_analysis */}
+                      {criterion.evidenceType === 'code_analysis' && (
+                        <div className="space-y-2 pt-2 border-t border-border/50">
+                          <Label className="text-sm flex items-center gap-2">
+                            <FileCode className="h-4 w-4" />
+                            Code Analysis Rules
+                          </Label>
+                          <Input
+                            placeholder="e.g., no-console, no-any, max-complexity:10"
+                            value={(criterion.evidenceConfig?.analysisRules as string) || ''}
+                            onChange={(e) =>
+                              updateCriterion(criterion.id, {
+                                evidenceConfig: {
+                                  ...criterion.evidenceConfig,
+                                  analysisRules: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Comma-separated lint rules or patterns to check in the code
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ))}
 
