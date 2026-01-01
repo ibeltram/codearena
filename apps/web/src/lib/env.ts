@@ -24,3 +24,11 @@ export const STRIPE_PUBLISHABLE_KEY =
 export const isDevelopment = process.env.NODE_ENV === 'development';
 export const isProduction = process.env.NODE_ENV === 'production';
 export const isTest = process.env.NODE_ENV === 'test';
+
+// Consolidated env object for convenience
+export const env = {
+  NEXT_PUBLIC_API_URL: API_URL,
+  NEXT_PUBLIC_APP_URL: APP_URL,
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: STRIPE_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_ENABLE_DEVTOOLS: ENABLE_DEVTOOLS,
+};

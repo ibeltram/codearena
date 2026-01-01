@@ -49,6 +49,41 @@ export async function adminChallengeRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', app.requireRole(ADMIN_ROLES));
 
+  // GET /api/admin/challenges/:id - Get a single challenge with all versions for admin editing
+  app.get('/api/admin/challenges/:id', async (request: FastifyRequest) => {
+    const paramResult = challengeIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid challenge ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const { id } = paramResult.data;
+
+    // Get the challenge
+    const [challenge] = await db
+      .select()
+      .from(challenges)
+      .where(eq(challenges.id, id));
+
+    if (!challenge) {
+      throw new NotFoundError('Challenge', id);
+    }
+
+    // Get all versions for this challenge
+    const versions = await db
+      .select()
+      .from(challengeVersions)
+      .where(eq(challengeVersions.challengeId, id))
+      .orderBy(sql`${challengeVersions.versionNumber} DESC`);
+
+    return {
+      ...challenge,
+      versions,
+    };
+  });
+
   // POST /api/admin/challenges - Create a new challenge
   app.post('/api/admin/challenges', async (request: FastifyRequest) => {
     const bodyResult = createChallengeSchema.safeParse(request.body);

@@ -258,8 +258,9 @@
     "dev": "pnpm run build --watch",
     "lint": "eslint src --ext ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test ./src/test/**/*.test.ts",
+    "test": "echo 'Extension tests require VS Code - use test:vscode'",
     "test:vscode": "vscode-test",
+    "clean": "rm -rf dist",
     "package": "vsce package --no-dependencies"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -48,7 +48,6 @@ const prizeTypeIcons: Record<PrizeType, typeof DollarSign> = {
 
 export default function AdminPrizeClaimDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const claimId = params.id as string;
 
   const [adminNotes, setAdminNotes] = useState('');
