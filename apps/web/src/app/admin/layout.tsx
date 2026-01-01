@@ -10,6 +10,7 @@ import {
   Settings,
   Shield,
   Gift,
+  History,
 } from 'lucide-react';
 
 import { Header } from '@/components/layout/header';
@@ -20,6 +21,7 @@ const adminNavItems = [
   { href: '/admin/disputes', label: 'Disputes', icon: AlertTriangle },
   { href: '/admin/prize-claims', label: 'Prize Claims', icon: Gift },
   { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/audit', label: 'Audit Log', icon: History },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 

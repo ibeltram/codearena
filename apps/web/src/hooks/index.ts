@@ -141,3 +141,20 @@ export {
   type MatchDisputesResponse,
   type MyDisputesResponse,
 } from './use-disputes';
+export {
+  useAdminUsers,
+  useAdminUser,
+  useUpdateUserRoles,
+  useBanUser,
+  useUnbanUser,
+  adminUserKeys,
+  type AdminUser,
+  type AdminUserDetail,
+  type AuditHistoryItem,
+  type AdminUsersFilters,
+  type AdminUsersResponse,
+  type AdminUserDetailResponse,
+  type UpdateRolesInput,
+  type BanUserInput,
+  type UserActionResponse,
+} from './use-admin-users';
