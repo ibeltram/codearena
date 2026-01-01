@@ -129,3 +129,15 @@ export {
   useExportAuditEvents,
   adminAuditKeys,
 } from './use-admin-audit';
+export {
+  useMatchDisputes,
+  useMyDisputes,
+  useCreateDispute,
+  disputeKeys,
+  disputeStatusLabels,
+  disputeStatusColors,
+  type CreateDisputeInput,
+  type DisputeResponse,
+  type MatchDisputesResponse,
+  type MyDisputesResponse,
+} from './use-disputes';

@@ -16,6 +16,7 @@ import {
   FileCode2,
   Gavel,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 
 import { MainLayout } from '@/components/layout';
@@ -34,8 +35,9 @@ import {
   LiveBadge,
   JudgingResults,
   JudgingLogs,
+  DisputeDialog,
 } from '@/components/matches';
-import { useMatch, useReadyUp, useForfeit, useMatchEvents, useMatchResults, useJudgementLogs, useJudgementLogsUrl } from '@/hooks';
+import { useMatch, useReadyUp, useForfeit, useMatchEvents, useMatchResults, useJudgementLogs, useJudgementLogsUrl, useMatchDisputes } from '@/hooks';
 import { categoryLabels, categoryColors, difficultyLabels, difficultyColors } from '@/types/challenge';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store';
@@ -73,6 +75,15 @@ export default function MatchDetailPage() {
 
   // SSE real-time events - keep track of live timer from server
   const [liveTimerRemaining, setLiveTimerRemaining] = useState<number | null>(null);
+
+  // Dispute dialog state
+  const [isDisputeDialogOpen, setIsDisputeDialogOpen] = useState(false);
+
+  // Fetch disputes for finalized matches
+  const shouldFetchDisputes = match && ['finalized', 'archived'].includes(match.status);
+  const { data: matchDisputesData, refetch: refetchDisputes } = useMatchDisputes(
+    shouldFetchDisputes ? matchId : undefined
+  );
 
   const handleTimerTick = useCallback((remainingMs: number, isWarning: boolean) => {
     setLiveTimerRemaining(remainingMs);
@@ -257,10 +268,33 @@ export default function MatchDetailPage() {
                 )}
 
                 {status === 'finalized' && (
-                  <Badge variant="secondary" className="gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Match Complete
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Match Complete
+                    </Badge>
+                    {/* Open Dispute button - only for participants who haven't already disputed */}
+                    {isParticipant && matchDisputesData?.canDispute && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsDisputeDialogOpen(true)}
+                        className="gap-2"
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Open Dispute
+                      </Button>
+                    )}
+                    {/* Show badge if user already has a dispute */}
+                    {isParticipant && matchDisputesData?.disputes?.some(
+                      (d) => d.openedBy.id === currentUserId
+                    ) && (
+                      <Badge variant="outline" className="gap-1 text-yellow-600 border-yellow-600">
+                        <AlertTriangle className="h-3 w-3" />
+                        Dispute Filed
+                      </Badge>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -426,6 +460,14 @@ export default function MatchDetailPage() {
           </Card>
         )}
       </div>
+
+      {/* Dispute Dialog */}
+      <DisputeDialog
+        matchId={matchId}
+        isOpen={isDisputeDialogOpen}
+        onOpenChange={setIsDisputeDialogOpen}
+        onSuccess={() => refetchDisputes()}
+      />
     </MainLayout>
   );
 }
