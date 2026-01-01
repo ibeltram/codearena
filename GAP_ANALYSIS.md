@@ -146,10 +146,11 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 
 ---
 
-## Priority Fixes (Updated)
+## Priority Fixes (Updated 2025-12-31)
 
 1. ~~Wire auth context~~ - DONE for profile page
 2. ~~Add "Join Match" button~~ - DONE ("Sign in to Compete")
 3. ~~Build judging results UI~~ - DONE
-4. **Phase 10: Automation Services** - Not started
-5. **Production hardening** - Continue pen testing, load testing
+4. ~~Wire admin dashboard stats~~ - DONE (GET /api/admin/stats with real data)
+5. **Phase 10: Automation Services** - Not started
+6. **Production hardening** - Continue pen testing, load testing
