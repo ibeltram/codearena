@@ -72,7 +72,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | Spec Requirement | Status |
 |-----------------|--------|
 | **Judging Results Display** | ✅ Complete - UI with scores/breakdown implemented |
-| **Dispute Creation (User)** | No "Open Dispute" UI for users |
+| **Dispute Creation (User)** | ✅ Complete - Open Dispute button + dialog on finalized matches |
 | **Prize Claims Flow** | ✅ Complete - Claim UI for tournament winners |
 | **Prize Fulfillment Admin** | ✅ Complete - Admin prize approval/fulfillment |
 | **Moderation Actions** | No admin sanction/ban UI |
@@ -139,7 +139,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | Phase 5: Submissions | Multipart upload done | ~85% |
 | Phase 6: Judging | Complete (scoring, tie-breakers, results UI) | ~90% |
 | Phase 7: Credits Wallet | Complete | ~95% |
-| Phase 8: Rankings/Disputes | Complete (leaderboard, disputes) | ~85% |
+| Phase 8: Rankings/Disputes | Complete (leaderboard, disputes, user dispute UI) | ~90% |
 | Phase 9: Tournaments | Prize claims added | ~75% |
 | Phase 10: Automation Services | Not started | 0% |
 | Phase 11: Production Hardening | Rate limiting, GDPR done | ~60% |
