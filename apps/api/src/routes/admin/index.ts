@@ -3,8 +3,12 @@ import { FastifyInstance } from 'fastify';
 import { adminChallengeRoutes } from './challenges';
 import { adminDisputeRoutes } from './disputes';
 import { adminUserRoutes } from './users';
+import { adminStatsRoutes } from './stats';
 
 export async function adminRoutes(app: FastifyInstance) {
+  // Admin stats routes (dashboard statistics)
+  await app.register(adminStatsRoutes);
+
   // Admin challenge management routes
   await app.register(adminChallengeRoutes);
 

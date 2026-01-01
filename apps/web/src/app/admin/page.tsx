@@ -9,12 +9,16 @@ import {
   ArrowRight,
   FileText,
   Trophy,
+  Loader2,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useAdminStats } from '@/hooks/use-admin-stats';
 
 export default function AdminDashboardPage() {
+  const { data: stats, isLoading, isError } = useAdminStats();
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -33,9 +37,17 @@ export default function AdminDashboardPage() {
             <FileCode className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">--</div>
+            <div className="text-2xl font-bold">
+              {isLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : isError ? (
+                '--'
+              ) : (
+                stats?.totalChallenges ?? 0
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Connect to API for stats
+              Published challenges
             </p>
           </CardContent>
         </Card>
@@ -46,9 +58,17 @@ export default function AdminDashboardPage() {
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">--</div>
+            <div className="text-2xl font-bold">
+              {isLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : isError ? (
+                '--'
+              ) : (
+                stats?.openDisputes ?? 0
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Connect to API for stats
+              Awaiting review
             </p>
           </CardContent>
         </Card>
@@ -59,9 +79,17 @@ export default function AdminDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">--</div>
+            <div className="text-2xl font-bold">
+              {isLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : isError ? (
+                '--'
+              ) : (
+                stats?.activeUsers ?? 0
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Connect to API for stats
+              Last 30 days
             </p>
           </CardContent>
         </Card>
@@ -72,9 +100,17 @@ export default function AdminDashboardPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">--</div>
+            <div className="text-2xl font-bold">
+              {isLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : isError ? (
+                '--'
+              ) : (
+                stats?.matchesToday ?? 0
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Connect to API for stats
+              Created today
             </p>
           </CardContent>
         </Card>
