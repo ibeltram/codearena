@@ -71,12 +71,12 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 
 | Spec Requirement | Status |
 |-----------------|--------|
-| **Judging Results Display** | No UI for viewing scores/breakdown |
+| **Judging Results Display** | ✅ Complete - UI with scores/breakdown implemented |
 | **Dispute Creation (User)** | No "Open Dispute" UI for users |
-| **Prize Claims Flow** | No claim UI for tournament winners |
-| **Prize Fulfillment Admin** | No admin prize approval/fulfillment |
+| **Prize Claims Flow** | ✅ Complete - Claim UI for tournament winners |
+| **Prize Fulfillment Admin** | ✅ Complete - Admin prize approval/fulfillment |
 | **Moderation Actions** | No admin sanction/ban UI |
-| **Audit Log Explorer** | No admin audit log UI |
+| **Audit Log Explorer** | ✅ Complete - Admin audit log UI with filters/export |
 | **Runner Image Management** | No admin UI for judge images |
 | **Template Management** | No admin template upload UI |
 
