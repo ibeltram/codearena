@@ -115,6 +115,7 @@ export interface ChallengeRequirement {
   description: string;
   weight: number;
   order: number;
+  evidenceType?: EvidenceType;
 }
 
 /**

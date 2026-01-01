@@ -7,15 +7,93 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   ChallengeRequirement,
+  EvidenceType,
   generateId,
   calculateTotalWeight,
   validateRequirementWeights,
+  evidenceTypeLabels,
 } from '@/types/challenge';
 
 interface RequirementsBuilderProps {
   requirements: ChallengeRequirement[];
   onChange: (requirements: ChallengeRequirement[]) => void;
+}
+
+// Color palette for weight visualization bars
+const WEIGHT_COLORS = [
+  'bg-blue-500',
+  'bg-green-500',
+  'bg-purple-500',
+  'bg-orange-500',
+  'bg-cyan-500',
+  'bg-pink-500',
+  'bg-yellow-500',
+  'bg-red-500',
+];
+
+// Weight distribution visualization component
+function WeightDistributionBar({ requirements }: { requirements: ChallengeRequirement[] }) {
+  const totalWeight = calculateTotalWeight(requirements);
+
+  if (requirements.length === 0 || totalWeight === 0) {
+    return (
+      <div className="h-8 w-full rounded-md bg-muted flex items-center justify-center">
+        <span className="text-xs text-muted-foreground">No requirements</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="h-8 w-full rounded-md overflow-hidden flex bg-muted">
+        {requirements.map((req, index) => {
+          const widthPercent = (req.weight / Math.max(totalWeight, 100)) * 100;
+          return (
+            <div
+              key={req.id}
+              className={`${WEIGHT_COLORS[index % WEIGHT_COLORS.length]} transition-all duration-300 flex items-center justify-center`}
+              style={{ width: `${widthPercent}%` }}
+              title={`${req.title || `Requirement ${index + 1}`}: ${req.weight}%`}
+            >
+              {widthPercent > 10 && (
+                <span className="text-xs font-medium text-white truncate px-1">
+                  {req.weight}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+        {totalWeight < 100 && (
+          <div
+            className="bg-muted-foreground/20 flex items-center justify-center"
+            style={{ width: `${100 - totalWeight}%` }}
+          >
+            <span className="text-xs text-muted-foreground">
+              {100 - totalWeight}%
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {requirements.map((req, index) => (
+          <div key={req.id} className="flex items-center gap-1 text-xs">
+            <div className={`w-3 h-3 rounded-sm ${WEIGHT_COLORS[index % WEIGHT_COLORS.length]}`} />
+            <span className="text-muted-foreground truncate max-w-[100px]">
+              {req.title || `Req ${index + 1}`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function RequirementsBuilder({ requirements, onChange }: RequirementsBuilderProps) {
@@ -32,6 +110,7 @@ export function RequirementsBuilder({ requirements, onChange }: RequirementsBuil
       description: '',
       weight: 0,
       order: requirements.length,
+      evidenceType: 'test_pass',
     };
     onChange([...requirements, newRequirement]);
   };
@@ -84,27 +163,34 @@ export function RequirementsBuilder({ requirements, onChange }: RequirementsBuil
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="text-lg">Requirements</CardTitle>
-        <div className="flex items-center gap-2">
-          <div
-            className={`text-sm ${
-              isValid ? 'text-green-600' : 'text-amber-600'
-            }`}
-          >
-            Total: {totalWeight}%
-            {!isValid && requirements.length > 0 && ' (must be 100%)'}
-          </div>
-          {requirements.length > 0 && !isValid && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={distributeWeightsEvenly}
+      <CardHeader className="space-y-4 pb-4">
+        <div className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">Requirements</CardTitle>
+          <div className="flex items-center gap-2">
+            <div
+              className={`text-sm ${
+                isValid ? 'text-green-600' : 'text-amber-600'
+              }`}
             >
-              Distribute Evenly
-            </Button>
-          )}
+              Total: {totalWeight}%
+              {!isValid && requirements.length > 0 && ' (must be 100%)'}
+            </div>
+            {requirements.length > 0 && !isValid && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={distributeWeightsEvenly}
+              >
+                Distribute Evenly
+              </Button>
+            )}
+          </div>
+        </div>
+        {/* Weight Distribution Visualization */}
+        <div className="pt-2">
+          <p className="text-sm text-muted-foreground mb-2">Weight Distribution</p>
+          <WeightDistributionBar requirements={requirements} />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -164,13 +250,36 @@ export function RequirementsBuilder({ requirements, onChange }: RequirementsBuil
                   </div>
                   <span className="mt-2 text-sm text-muted-foreground">%</span>
                 </div>
-                <Input
-                  placeholder="Description (optional)"
-                  value={requirement.description}
-                  onChange={(e) =>
-                    updateRequirement(index, { description: e.target.value })
-                  }
-                />
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <Input
+                      placeholder="Description (optional)"
+                      value={requirement.description}
+                      onChange={(e) =>
+                        updateRequirement(index, { description: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="w-40">
+                    <Select
+                      value={requirement.evidenceType || 'test_pass'}
+                      onValueChange={(value: EvidenceType) =>
+                        updateRequirement(index, { evidenceType: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Evidence Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(evidenceTypeLabels) as EvidenceType[]).map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {evidenceTypeLabels[type]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
               <Button
                 type="button"
