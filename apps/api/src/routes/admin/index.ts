@@ -6,6 +6,7 @@ import { adminUserRoutes } from './users';
 import { adminStatsRoutes } from './stats';
 import { adminReportRoutes } from './reports';
 import { adminCollusionRoutes } from './collusion';
+import { adminRewardsRoutes } from './rewards';
 
 export async function adminRoutes(app: FastifyInstance) {
   // Admin stats routes (dashboard statistics)
@@ -25,6 +26,9 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // Admin collusion detection routes
   await app.register(adminCollusionRoutes);
+
+  // Admin rewards management routes (partners, inventory, redemptions)
+  await app.register(adminRewardsRoutes);
 
   // TODO: Add other admin routes
   // await app.register(adminTournamentRoutes);
