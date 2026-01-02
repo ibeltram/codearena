@@ -6,8 +6,17 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
 
-  // Database
+  // Database (via PgBouncer)
   DATABASE_URL: z.string().default('postgresql://reporivals:reporivals@localhost:5432/reporivals'),
+  DATABASE_REPLICA_URL: z.string().optional(),
+
+  // Database Connection Pooling
+  DB_POOL_MAX: z.string().optional().default('10'),
+  DB_POOL_MIN: z.string().optional().default('2'),
+  DB_REPLICA_POOL_MAX: z.string().optional().default('15'),
+
+  // PgBouncer Admin (for stats)
+  PGBOUNCER_ADMIN_URL: z.string().optional(),
 
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),

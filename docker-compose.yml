@@ -9,11 +9,50 @@ services:
       POSTGRES_PASSWORD: reporivals
       POSTGRES_DB: reporivals
     ports:
-      - "5432:5432"
+      - "5433:5432"  # Direct access on 5433 for admin tasks
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./config/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U reporivals"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # PgBouncer connection pooler
+  pgbouncer:
+    image: edoburu/pgbouncer:1.21.0-p0
+    container_name: reporivals-pgbouncer
+    environment:
+      DATABASE_URL: postgres://reporivals:reporivals@postgres:5432/reporivals
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 3
+      MAX_DB_CONNECTIONS: 50
+      SERVER_IDLE_TIMEOUT: 600
+      SERVER_LIFETIME: 3600
+      SERVER_CONNECT_TIMEOUT: 15
+      SERVER_LOGIN_RETRY: 3
+      QUERY_TIMEOUT: 120
+      CLIENT_IDLE_TIMEOUT: 0
+      LOG_CONNECTIONS: 1
+      LOG_DISCONNECTIONS: 1
+      LOG_POOLER_ERRORS: 1
+      STATS_PERIOD: 60
+      ADMIN_USERS: reporivals
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "5432:5432"  # Applications connect through PgBouncer
+      - "6432:6432"  # PgBouncer admin interface
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "reporivals"]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -1,6 +1,12 @@
 import { FastifyInstance } from 'fastify';
 
-import { checkDatabaseConnection } from '../db';
+import {
+  checkDatabaseConnection,
+  checkReplicaConnection,
+  getPoolStats,
+  getPgBouncerStats,
+  hasReadReplicas,
+} from '../db';
 import { checkRedisConnection } from '../lib/redis';
 import { checkStorageConnection } from '../lib/storage';
 import { checkSandboxHealth, SANDBOX_DEFAULTS } from '../lib/sandbox';
@@ -12,6 +18,7 @@ interface HealthResponse {
   uptime: number;
   checks?: {
     database: boolean;
+    databaseReplica?: boolean;
     redis: boolean;
     s3: boolean;
   };
@@ -30,14 +37,26 @@ export async function healthRoutes(app: FastifyInstance) {
 
   // Detailed readiness check - verifies all dependencies
   app.get('/api/health/ready', async (request, reply): Promise<HealthResponse> => {
-    const [database, redis, s3] = await Promise.all([
+    const checkPromises: Promise<boolean>[] = [
       checkDatabaseConnection(),
       checkRedisConnection(),
       checkStorageConnection(),
-    ]);
+    ];
 
-    const checks = { database, redis, s3 };
-    const isHealthy = Object.values(checks).every(Boolean);
+    // Add replica check if configured
+    if (hasReadReplicas()) {
+      checkPromises.push(checkReplicaConnection());
+    }
+
+    const results = await Promise.all(checkPromises);
+    const [database, redis, s3, databaseReplica] = results;
+
+    const checks: HealthResponse['checks'] = { database, redis, s3 };
+    if (hasReadReplicas()) {
+      checks.databaseReplica = databaseReplica;
+    }
+
+    const isHealthy = database && redis && s3;
     const status = isHealthy ? 'ok' : 'degraded';
 
     if (!isHealthy) {
@@ -50,6 +69,19 @@ export async function healthRoutes(app: FastifyInstance) {
       version: process.env.npm_package_version || '0.1.0',
       uptime: process.uptime(),
       checks,
+    };
+  });
+
+  // Database pool statistics
+  app.get('/api/health/db-pools', async () => {
+    const poolStats = getPoolStats();
+    const pgbouncerStats = await getPgBouncerStats();
+
+    return {
+      timestamp: new Date().toISOString(),
+      pools: poolStats,
+      pgbouncer: pgbouncerStats,
+      hasReadReplicas: hasReadReplicas(),
     };
   });
 
