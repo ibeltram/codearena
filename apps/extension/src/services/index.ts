@@ -12,6 +12,6 @@ export {
   reportError,
   TelemetryEvents,
 } from './telemetry';
-export type { StoredTokens } from './auth';
+export type { StoredTokens, AuthUser, AuthStateChangeCallback } from './auth';
 export type { FileEntry, SubmissionSummary, UploadProgress } from './submission';
 export type { TelemetryEvent, ErrorReport } from './telemetry';

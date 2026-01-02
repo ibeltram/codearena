@@ -1,5 +1,15 @@
 import * as vscode from 'vscode';
-import { Challenge, Match, MatchHistoryItem, User } from '../types';
+import { Challenge, Match, MatchHistoryItem } from '../types';
+
+/**
+ * User info for the sidebar (compatible with AuthUser from auth service)
+ */
+interface SidebarUser {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+}
 
 /**
  * Commands sent from the webview to the extension
@@ -34,7 +44,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /** Current state to send to webview */
   private _isAuthenticated = false;
-  private _user: User | null = null;
+  private _user: SidebarUser | null = null;
   private _challenges: Challenge[] = [];
   private _challengesLoading = false;
   private _challengesError: string | null = null;
@@ -80,6 +90,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     // Send initial state when ready
     this._sendInitialState();
+
+    // Listen for visibility changes and send full state when visible again
+    webviewView.onDidChangeVisibility(
+      () => {
+        if (webviewView.visible) {
+          this._sendFullState();
+        }
+      },
+      undefined,
+      this.context.subscriptions
+    );
   }
 
   /**
@@ -258,10 +279,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Send the initial state to the webview
+   * Send the initial state to the webview on first load
    */
   private _sendInitialState(): void {
-    // Placeholder - will be implemented in QUI-280
+    this._sendFullState();
+  }
+
+  /**
+   * Send the complete current state to the webview
+   * Used on initial load and when visibility changes
+   */
+  private _sendFullState(): void {
+    this._postMessage({
+      type: 'stateUpdate',
+      data: {
+        auth: {
+          isAuthenticated: this._isAuthenticated,
+          user: this._user,
+        },
+        challenges: {
+          challenges: this._challenges,
+          loading: this._challengesLoading,
+          error: this._challengesError,
+        },
+        match: {
+          match: this._match,
+          timeRemaining: this._timeRemaining,
+          connectionState: this._connectionState,
+        },
+        history: {
+          matches: this._history,
+          loading: this._historyLoading,
+          error: this._historyError,
+        },
+      },
+    });
   }
 
   /**
@@ -282,7 +334,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    * @param isAuthenticated - Whether the user is signed in
    * @param user - The current user (or null if signed out)
    */
-  public updateAuth(isAuthenticated: boolean, user: User | null): void {
+  public updateAuth(isAuthenticated: boolean, user: SidebarUser | null): void {
     this._isAuthenticated = isAuthenticated;
     this._user = user;
     this._postMessage({

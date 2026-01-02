@@ -776,6 +776,30 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Listen for auth state changes and update sidebar
+  authService.onAuthStateChange((authenticated, user) => {
+    isAuthenticated = authenticated;
+    currentUserId = user?.id || null;
+
+    // Update the sidebar webview with auth state
+    sidebarProvider?.updateAuth(authenticated, user);
+
+    // Update match provider with current user ID
+    matchProvider.setCurrentUserId(currentUserId);
+
+    // Refresh data when user signs in
+    if (authenticated && user) {
+      vscode.commands.executeCommand('reporivals.refreshChallenges');
+      fetchMatchHistory();
+    } else {
+      // Clear data when signed out
+      challengesProvider.setChallenges([]);
+      matchProvider.setMatch(null);
+      historyProvider.setMatches([]);
+      statusBarService.hide();
+    }
+  });
+
   // Register tree data providers (kept during migration phase)
   const challengesView = vscode.window.createTreeView('reporivals-challenges', {
     treeDataProvider: challengesProvider,

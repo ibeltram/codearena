@@ -50,20 +50,38 @@ export interface StoredTokens {
 }
 
 /**
+ * User info for auth state changes
+ */
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+/**
+ * Auth state change callback
+ */
+export type AuthStateChangeCallback = (isAuthenticated: boolean, user: AuthUser | null) => void;
+
+/**
  * Auth service for handling device code authentication flow
  */
 export class AuthService {
   private context: vscode.ExtensionContext;
   private apiUrl: string;
-  private webUrl: string;
+  private _webUrl: string; // Reserved for future use
   private pollingInterval: NodeJS.Timeout | null = null;
   private statusBarItem: vscode.StatusBarItem | null = null;
+  private authStateListeners: AuthStateChangeCallback[] = [];
+  private _isAuthenticated = false;
+  private _currentUser: AuthUser | null = null;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
     const config = vscode.workspace.getConfiguration('reporivals');
     this.apiUrl = config.get<string>('apiUrl', 'http://localhost:3002');
-    this.webUrl = config.get<string>('webUrl', 'http://localhost:3001');
+    this._webUrl = config.get<string>('webUrl', 'http://localhost:3001');
 
     // Create auth status bar item
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -189,6 +207,16 @@ export class AuthService {
         userAvatarUrl: tokens.user?.avatarUrl,
       });
 
+      // Update internal state and notify listeners
+      this._isAuthenticated = true;
+      this._currentUser = tokens.user ? {
+        id: tokens.user.id,
+        email: tokens.user.email,
+        displayName: tokens.user.displayName,
+        avatarUrl: tokens.user.avatarUrl,
+      } : null;
+      this.notifyAuthStateChange();
+
       // Update context
       await vscode.commands.executeCommand('setContext', 'reporivals.isAuthenticated', true);
 
@@ -273,7 +301,7 @@ export class AuthService {
             body: JSON.stringify({ deviceCode: data.deviceCode }),
           });
 
-          const result = await response.json();
+          const result = (await response.json()) as TokenResponse | AuthError;
 
           if (response.ok) {
             // Success!
@@ -283,12 +311,13 @@ export class AuthService {
           }
 
           // Handle specific error cases
-          if (result.error === 'authorization_pending') {
+          const errorResult = result as AuthError;
+          if (errorResult.error === 'authorization_pending') {
             // Still waiting, continue polling
             return;
           }
 
-          if (result.error === 'expired_token') {
+          if (errorResult.error === 'expired_token') {
             this.stopPolling();
             vscode.window.showWarningMessage('RepoRivals: Sign-in code expired. Please try again.');
             resolve(null);
@@ -298,7 +327,7 @@ export class AuthService {
           // Other error
           this.stopPolling();
           vscode.window.showErrorMessage(
-            `RepoRivals: Sign-in failed: ${result.errorDescription || 'Unknown error'}`
+            `RepoRivals: Sign-in failed: ${errorResult.errorDescription || 'Unknown error'}`
           );
           resolve(null);
         } catch (error) {
@@ -389,6 +418,11 @@ export class AuthService {
     await this.clearTokens();
     await vscode.commands.executeCommand('setContext', 'reporivals.isAuthenticated', false);
 
+    // Update internal state and notify listeners
+    this._isAuthenticated = false;
+    this._currentUser = null;
+    this.notifyAuthStateChange();
+
     // Hide status bar
     this.statusBarItem?.hide();
   }
@@ -414,6 +448,10 @@ export class AuthService {
   async initialize(): Promise<boolean> {
     const tokens = await this.getStoredTokens();
     if (!tokens) {
+      // Ensure state is cleared
+      this._isAuthenticated = false;
+      this._currentUser = null;
+      this.notifyAuthStateChange();
       return false;
     }
 
@@ -421,9 +459,36 @@ export class AuthService {
     if (tokens.expiresAt < Date.now() + 5 * 60 * 1000) {
       const refreshed = await this.refreshTokens();
       if (!refreshed) {
+        // Refresh failed, clear state
+        this._isAuthenticated = false;
+        this._currentUser = null;
+        this.notifyAuthStateChange();
         return false;
       }
+      // Get updated tokens after refresh
+      const updatedTokens = await this.getStoredTokens();
+      if (updatedTokens) {
+        this._isAuthenticated = true;
+        this._currentUser = {
+          id: updatedTokens.userId,
+          email: updatedTokens.userEmail,
+          displayName: updatedTokens.userDisplayName,
+          avatarUrl: updatedTokens.userAvatarUrl,
+        };
+      }
+    } else {
+      // Set internal state from stored tokens
+      this._isAuthenticated = true;
+      this._currentUser = {
+        id: tokens.userId,
+        email: tokens.userEmail,
+        displayName: tokens.userDisplayName,
+        avatarUrl: tokens.userAvatarUrl,
+      };
     }
+
+    // Notify listeners of initial auth state
+    this.notifyAuthStateChange();
 
     // Update UI
     this.updateStatusBar(tokens.userDisplayName);
@@ -433,10 +498,51 @@ export class AuthService {
   }
 
   /**
+   * Register a callback for auth state changes
+   * @param callback - Function to call when auth state changes
+   * @returns Disposable to unregister the listener
+   */
+  onAuthStateChange(callback: AuthStateChangeCallback): vscode.Disposable {
+    this.authStateListeners.push(callback);
+    return {
+      dispose: () => {
+        const index = this.authStateListeners.indexOf(callback);
+        if (index >= 0) {
+          this.authStateListeners.splice(index, 1);
+        }
+      },
+    };
+  }
+
+  /**
+   * Get current auth state
+   */
+  getAuthState(): { isAuthenticated: boolean; user: AuthUser | null } {
+    return {
+      isAuthenticated: this._isAuthenticated,
+      user: this._currentUser,
+    };
+  }
+
+  /**
+   * Notify listeners of auth state change
+   */
+  private notifyAuthStateChange(): void {
+    for (const listener of this.authStateListeners) {
+      try {
+        listener(this._isAuthenticated, this._currentUser);
+      } catch (error) {
+        console.error('Error in auth state listener:', error);
+      }
+    }
+  }
+
+  /**
    * Dispose
    */
   dispose(): void {
     this.stopPolling();
     this.statusBarItem?.dispose();
+    this.authStateListeners = [];
   }
 }
