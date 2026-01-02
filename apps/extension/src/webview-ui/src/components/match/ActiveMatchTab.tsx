@@ -3,6 +3,9 @@ import { useExtension } from '../../context';
 import { MatchTimer } from './MatchTimer';
 import { ParticipantCard } from './ParticipantCard';
 import { MatchActions } from './MatchActions';
+import { ConnectionStatus } from './ConnectionStatus';
+import { MatchStatusBadge } from './MatchStatusBadge';
+import type { MatchStatus } from './MatchStatusBadge';
 import './ActiveMatchTab.css';
 
 /**
@@ -62,8 +65,8 @@ export function ActiveMatchTab() {
       <div className="active-match-tab__header">
         <h2 className="active-match-tab__title">{match.challengeTitle}</h2>
         <div className="active-match-tab__meta">
-          <StatusBadge status={match.status} />
-          <ConnectionIndicator state={connectionState} />
+          <MatchStatusBadge status={match.status as MatchStatus} />
+          <ConnectionStatus state={connectionState} />
         </div>
       </div>
 
@@ -106,60 +109,6 @@ export function ActiveMatchTab() {
         />
       </div>
     </div>
-  );
-}
-
-// ============================================
-// Helper Components
-// ============================================
-
-/**
- * Match status badge
- */
-interface StatusBadgeProps {
-  status: string;
-}
-
-function StatusBadge({ status }: StatusBadgeProps) {
-  const getStatusLabel = () => {
-    switch (status) {
-      case 'open':
-        return 'Open';
-      case 'matched':
-        return 'Matched';
-      case 'in_progress':
-        return 'In Progress';
-      case 'submission_locked':
-        return 'Locked';
-      case 'judging':
-        return 'Judging';
-      case 'finalized':
-        return 'Finalized';
-      default:
-        return status;
-    }
-  };
-
-  return <span className={`status-badge status-badge--${status}`}>{getStatusLabel()}</span>;
-}
-
-/**
- * SSE connection indicator
- */
-interface ConnectionIndicatorProps {
-  state: 'connected' | 'disconnected' | 'reconnecting';
-}
-
-function ConnectionIndicator({ state }: ConnectionIndicatorProps) {
-  return (
-    <span className={`connection-indicator connection-indicator--${state}`}>
-      <span className="connection-indicator__dot" />
-      <span className="connection-indicator__label">
-        {state === 'connected' && 'Live'}
-        {state === 'disconnected' && 'Offline'}
-        {state === 'reconnecting' && 'Reconnecting...'}
-      </span>
-    </span>
   );
 }
 

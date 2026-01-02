@@ -1,0 +1,92 @@
+/* StatsOverview Component Styles */
+
+.stats-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--border);
+}
+
+/* Total and winrate sections - column layout */
+.stats-overview__total,
+.stats-overview__winrate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Large value display */
+.stats-overview__value {
+  font-size: 1.4em;
+  font-weight: 600;
+  color: var(--foreground);
+  line-height: 1.2;
+}
+
+/* Small label text */
+.stats-overview__label {
+  font-size: 0.7em;
+  color: var(--foreground-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* W/L/D breakdown container */
+.stats-overview__breakdown {
+  display: flex;
+  gap: 12px;
+}
+
+/* Individual stat in breakdown */
+.stats-overview__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stats-overview__stat-value {
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stats-overview__stat-label {
+  font-size: 0.7em;
+  font-weight: 500;
+  color: var(--foreground-muted);
+}
+
+/* Win - green */
+.stats-overview__stat--win .stats-overview__stat-value {
+  color: #4ade80;
+}
+
+.stats-overview__stat--win .stats-overview__stat-label {
+  color: #4ade80;
+}
+
+/* Loss - red */
+.stats-overview__stat--loss .stats-overview__stat-value {
+  color: #f87171;
+}
+
+.stats-overview__stat--loss .stats-overview__stat-label {
+  color: #f87171;
+}
+
+/* Draw - yellow */
+.stats-overview__stat--draw .stats-overview__stat-value {
+  color: #fbbf24;
+}
+
+.stats-overview__stat--draw .stats-overview__stat-label {
+  color: #fbbf24;
+}
+
+/* Empty state (when total is 0) - optional styling */
+.stats-overview--empty {
+  display: none;
+}
