@@ -14,6 +14,7 @@ import {
   Flag,
   Award,
   Package,
+  Receipt,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -39,6 +40,7 @@ const adminNavItems: NavItem[] = [
     subItems: [
       { href: '/admin/rewards/partners', label: 'Partners', icon: Award },
       { href: '/admin/rewards/inventory', label: 'Inventory', icon: Package },
+      { href: '/admin/rewards/redemptions', label: 'Redemptions', icon: Receipt },
     ],
   },
   { href: '/admin/users', label: 'Users', icon: Users },
