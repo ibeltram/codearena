@@ -1,0 +1,35 @@
+/* Card Component Styles */
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--background);
+  padding: 12px;
+}
+
+/* Interactive card styles */
+.card--interactive {
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.card--interactive:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+  border-color: var(--vscode-focusBorder);
+}
+
+.card--interactive:active {
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.1));
+}
+
+/* Focus state for keyboard navigation */
+.card--interactive:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+  border-color: var(--focus-border);
+}
+
+/* Hover elevation effect */
+.card--interactive:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}

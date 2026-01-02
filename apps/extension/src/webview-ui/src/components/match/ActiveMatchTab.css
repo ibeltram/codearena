@@ -1,0 +1,231 @@
+/* ActiveMatchTab Component Styles */
+
+.active-match-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+/* Header */
+.active-match-tab__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.active-match-tab__title {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-match-tab__meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Timer section */
+.active-match-tab__timer {
+  display: flex;
+  justify-content: center;
+}
+
+/* Participants section */
+.active-match-tab__participants {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.active-match-tab__waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--foreground-muted);
+  font-size: 0.9em;
+}
+
+.active-match-tab__waiting-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Stakes info */
+.active-match-tab__stakes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background-color: var(--background-secondary);
+  border-radius: 4px;
+}
+
+.active-match-tab__stakes-label {
+  color: var(--foreground-muted);
+  font-size: 0.85em;
+}
+
+.active-match-tab__stakes-value {
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+/* Actions section */
+.active-match-tab__actions {
+  margin-top: auto;
+}
+
+/* Empty State */
+.active-match-tab__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  flex: 1;
+}
+
+.active-match-tab__empty-icon {
+  font-size: 2.5em;
+  margin-bottom: 12px;
+  opacity: 0.7;
+}
+
+.active-match-tab__empty-title {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 6px;
+}
+
+.active-match-tab__empty-message {
+  font-size: 0.85em;
+  color: var(--foreground-muted);
+  margin-bottom: 16px;
+  max-width: 200px;
+}
+
+.active-match-tab__empty-button {
+  padding: 8px 20px;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.active-match-tab__empty-button:hover {
+  background-color: var(--primary-hover);
+}
+
+.active-match-tab__empty-button:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+/* Status Badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.75em;
+  font-weight: 500;
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+
+.status-badge--open {
+  background-color: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+.status-badge--matched {
+  background-color: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.status-badge--in_progress {
+  background-color: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.status-badge--submission_locked {
+  background-color: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+}
+
+.status-badge--judging {
+  background-color: rgba(192, 132, 252, 0.2);
+  color: #c084fc;
+}
+
+.status-badge--finalized {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+/* Connection Indicator */
+.connection-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75em;
+}
+
+.connection-indicator__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.connection-indicator--connected .connection-indicator__dot {
+  background-color: #4ade80;
+}
+
+.connection-indicator--disconnected .connection-indicator__dot {
+  background-color: #f87171;
+}
+
+.connection-indicator--reconnecting .connection-indicator__dot {
+  background-color: #fbbf24;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.connection-indicator__label {
+  color: var(--foreground-muted);
+}

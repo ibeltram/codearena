@@ -1,0 +1,74 @@
+/* Tabs Component Styles */
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Tab List - Horizontal row of triggers */
+.tabs__list {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+/* Tab Trigger - Individual tab button */
+.tabs__trigger {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--foreground-muted);
+  font-size: 0.9em;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.tabs__trigger:hover:not(:disabled) {
+  color: var(--foreground);
+  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+/* Active tab */
+.tabs__trigger--active {
+  color: var(--foreground);
+  border-bottom-color: var(--primary);
+}
+
+/* Disabled tab */
+.tabs__trigger--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Focus state */
+.tabs__trigger:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
+
+/* Tab Content - Panel container */
+.tabs__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Focus for keyboard navigation */
+.tabs__content:focus {
+  outline: none;
+}
+
+.tabs__content:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}

@@ -6,3 +6,5 @@ export type { ParticipantCardProps } from './ParticipantCard';
 
 export { MatchActions } from './MatchActions';
 export type { MatchActionsProps } from './MatchActions';
+
+export { ActiveMatchTab } from './ActiveMatchTab';
