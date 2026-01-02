@@ -193,3 +193,22 @@ export {
   useDeleteAutomationTemplate,
   automationKeys,
 } from './use-automation';
+export {
+  useAdminRewardsPartners,
+  useCreatePartner,
+  useUpdatePartner,
+  useDeactivatePartner,
+  useAdminInventory,
+  useBulkUploadCodes,
+  useAdminRedemptions,
+  useRefundRedemption,
+  adminRewardsKeys,
+  type AdminPartnerReward,
+  type CreatePartnerInput,
+  type UpdatePartnerInput,
+  type AdminInventoryFilters,
+  type AdminRedemptionsFilters,
+  type InventoryResponse,
+  type AdminRedemption,
+  type AdminRedemptionsResponse,
+} from './use-admin-rewards';
