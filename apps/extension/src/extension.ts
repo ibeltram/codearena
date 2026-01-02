@@ -24,10 +24,13 @@ let currentUserId: string | null = null;
 async function fetchMatchHistory(): Promise<void> {
   if (!currentUserId) {
     historyProvider.setMatches([]);
+    sidebarProvider?.updateHistory([], false, null);
     return;
   }
 
   historyProvider.setLoading(true);
+  // Update sidebar webview with loading state
+  sidebarProvider?.updateHistory([], true, null);
 
   try {
     const config = getConfig();
@@ -80,12 +83,20 @@ async function fetchMatchHistory(): Promise<void> {
       }));
 
       historyProvider.setMatches(matches);
+      // Update sidebar webview with history data
+      sidebarProvider?.updateHistory(matches, false, null);
     } else {
-      historyProvider.setError('Failed to load match history');
+      const errorMsg = 'Failed to load match history';
+      historyProvider.setError(errorMsg);
+      // Update sidebar webview with error state
+      sidebarProvider?.updateHistory([], false, errorMsg);
     }
   } catch (error) {
     console.error('Failed to fetch match history:', error);
-    historyProvider.setError('Network error - check connection');
+    const errorMsg = 'Network error - check connection';
+    historyProvider.setError(errorMsg);
+    // Update sidebar webview with error state
+    sidebarProvider?.updateHistory([], false, errorMsg);
   } finally {
     historyProvider.setLoading(false);
   }
@@ -204,8 +215,9 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Browse Challenges
   const browseChallenges = vscode.commands.registerCommand('reporivals.browseChallenges', () => {
-    // Focus the challenges view
-    vscode.commands.executeCommand('reporivals-challenges.focus');
+    // Focus the sidebar view and switch to challenges tab
+    vscode.commands.executeCommand('reporivals-sidebar.focus');
+    sidebarProvider?.postMessage({ type: 'switchTab', data: { tab: 'challenges' } });
   });
 
   // Show Challenge Details
@@ -519,12 +531,16 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Focus Match View
   const focusMatchView = vscode.commands.registerCommand('reporivals.focusMatchView', () => {
-    vscode.commands.executeCommand('reporivals-match.focus');
+    // Focus the sidebar view and switch to match tab
+    vscode.commands.executeCommand('reporivals-sidebar.focus');
+    sidebarProvider?.postMessage({ type: 'switchTab', data: { tab: 'match' } });
   });
 
   // Refresh Challenges
   const refreshChallenges = vscode.commands.registerCommand('reporivals.refreshChallenges', async () => {
     challengesProvider.setLoading(true);
+    // Update sidebar webview with loading state
+    sidebarProvider?.updateChallenges([], true, null);
 
     try {
       const config = getConfig();
@@ -552,12 +568,20 @@ function registerCommands(context: vscode.ExtensionContext): void {
           isPublished: c.isPublished ?? c.is_published ?? true,
         }));
         challengesProvider.setChallenges(challenges);
+        // Update sidebar webview with challenges data
+        sidebarProvider?.updateChallenges(challenges, false, null);
       } else {
-        challengesProvider.setError('Failed to load challenges');
+        const errorMsg = 'Failed to load challenges';
+        challengesProvider.setError(errorMsg);
+        // Update sidebar webview with error state
+        sidebarProvider?.updateChallenges([], false, errorMsg);
       }
     } catch (error) {
       console.error('Failed to fetch challenges:', error);
-      challengesProvider.setError('Network error - check connection');
+      const errorMsg = 'Network error - check connection';
+      challengesProvider.setError(errorMsg);
+      // Update sidebar webview with error state
+      sidebarProvider?.updateChallenges([], false, errorMsg);
     } finally {
       challengesProvider.setLoading(false);
     }
@@ -799,22 +823,6 @@ export function activate(context: vscode.ExtensionContext) {
       statusBarService.hide();
     }
   });
-
-  // Register tree data providers (kept during migration phase)
-  const challengesView = vscode.window.createTreeView('reporivals-challenges', {
-    treeDataProvider: challengesProvider,
-    showCollapseAll: true,
-  });
-
-  const matchView = vscode.window.createTreeView('reporivals-match', {
-    treeDataProvider: matchProvider,
-  });
-
-  const historyView = vscode.window.createTreeView('reporivals-history', {
-    treeDataProvider: historyProvider,
-  });
-
-  context.subscriptions.push(challengesView, matchView, historyView);
 
   // Register SidebarProvider for the React webview sidebar
   sidebarProvider = new SidebarProvider(context.extensionUri, context);

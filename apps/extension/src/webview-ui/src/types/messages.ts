@@ -177,4 +177,5 @@ export type ExtensionMessage =
   | {
       type: 'historyUpdate';
       data: { matches: MatchHistoryItem[]; loading: boolean; error: string | null };
-    };
+    }
+  | { type: 'switchTab'; data: { tab: WebviewState['activeTab'] } };

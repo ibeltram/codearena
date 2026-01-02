@@ -132,36 +132,12 @@
     "views": {
       "reporivals": [
         {
-          "id": "reporivals-challenges",
-          "name": "Challenges",
-          "contextualTitle": "RepoRivals Challenges"
-        },
-        {
-          "id": "reporivals-match",
-          "name": "Active Match",
-          "contextualTitle": "Current Match"
-        },
-        {
-          "id": "reporivals-history",
-          "name": "Recent Matches",
-          "contextualTitle": "Match History"
+          "id": "reporivals-sidebar",
+          "name": "RepoRivals",
+          "type": "webview"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "reporivals-challenges",
-        "contents": "Welcome to RepoRivals!\n\nSign in to browse challenges and compete.\n\n[Sign In](command:reporivals.signIn)"
-      },
-      {
-        "view": "reporivals-match",
-        "contents": "No active match.\n\nJoin a challenge to start competing!\n\n[Browse Challenges](command:reporivals.browseChallenges)"
-      },
-      {
-        "view": "reporivals-history",
-        "contents": "No recent matches.\n\nComplete your first match to see history here."
-      }
-    ],
     "configuration": {
       "title": "RepoRivals",
       "properties": {

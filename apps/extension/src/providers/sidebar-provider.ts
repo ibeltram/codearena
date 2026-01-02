@@ -420,4 +420,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       data: { matches, loading, error },
     });
   }
+
+  /**
+   * Send a message to the webview
+   * Used for commands like switching tabs from the extension
+   * @param message - The message to send
+   */
+  public postMessage(message: unknown): void {
+    this._postMessage(message);
+  }
 }

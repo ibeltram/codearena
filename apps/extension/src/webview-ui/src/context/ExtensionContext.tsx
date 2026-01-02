@@ -205,6 +205,13 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
             payload: message.data,
           });
           break;
+
+        case 'switchTab':
+          dispatch({
+            type: 'SET_ACTIVE_TAB',
+            payload: message.data,
+          });
+          break;
       }
     };
 
