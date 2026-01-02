@@ -13,17 +13,34 @@ import {
   History,
   Flag,
   Award,
+  Package,
+  type LucideIcon,
 } from 'lucide-react';
 
 import { Header } from '@/components/layout/header';
 
-const adminNavItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  subItems?: { href: string; label: string; icon: LucideIcon }[];
+}
+
+const adminNavItems: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/challenges', label: 'Challenges', icon: FileCode },
   { href: '/admin/disputes', label: 'Disputes', icon: AlertTriangle },
   { href: '/admin/reports', label: 'User Reports', icon: Flag },
   { href: '/admin/prize-claims', label: 'Prize Claims', icon: Gift },
-  { href: '/admin/rewards/partners', label: 'Rewards', icon: Award },
+  {
+    href: '/admin/rewards',
+    label: 'Rewards',
+    icon: Award,
+    subItems: [
+      { href: '/admin/rewards/partners', label: 'Partners', icon: Award },
+      { href: '/admin/rewards/inventory', label: 'Inventory', icon: Package },
+    ],
+  },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/audit', label: 'Audit Log', icon: History },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
@@ -54,6 +71,44 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 ? pathname === '/admin'
                 : pathname.startsWith(item.href);
             const Icon = item.icon;
+
+            // Handle items with sub-navigation
+            if (item.subItems) {
+              return (
+                <div key={item.href} className="space-y-1">
+                  <div
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${
+                      isActive
+                        ? 'text-foreground font-medium'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </div>
+                  <div className="ml-4 space-y-1 border-l pl-3">
+                    {item.subItems.map((subItem) => {
+                      const isSubActive = pathname === subItem.href;
+                      const SubIcon = subItem.icon;
+                      return (
+                        <Link
+                          key={subItem.href}
+                          href={subItem.href}
+                          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                            isSubActive
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          <SubIcon className="h-4 w-4" />
+                          {subItem.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
 
             return (
               <Link

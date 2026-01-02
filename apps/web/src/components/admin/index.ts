@@ -12,3 +12,4 @@ export { UserTable } from './user-table';
 export { ReportTable } from './report-table';
 export { PartnerTable } from './partner-table';
 export { PartnerFormDialog } from './partner-form-dialog';
+export { BulkUploadDialog } from './bulk-upload-dialog';
