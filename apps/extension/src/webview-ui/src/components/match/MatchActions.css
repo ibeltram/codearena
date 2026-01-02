@@ -1,0 +1,116 @@
+/* MatchActions Component Styles */
+
+.match-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.match-actions__primary,
+.match-actions__secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Base button styles */
+.match-actions__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+  flex: 1;
+  min-width: 100px;
+}
+
+.match-actions__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.match-actions__button:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 2px;
+}
+
+.match-actions__button-icon {
+  font-size: 1.1em;
+}
+
+/* Primary button */
+.match-actions__button--primary {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.match-actions__button--primary:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+/* Secondary button */
+.match-actions__button--secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.match-actions__button--secondary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+/* Warning button (for Lock) */
+.match-actions__button--warning {
+  background-color: rgba(255, 193, 7, 0.2);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+}
+
+.match-actions__button--warning:hover:not(:disabled) {
+  background-color: rgba(255, 193, 7, 0.3);
+}
+
+/* Destructive button (for Forfeit) */
+.match-actions__button--destructive {
+  background-color: rgba(244, 67, 54, 0.15);
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+.match-actions__button--destructive:hover:not(:disabled) {
+  background-color: rgba(244, 67, 54, 0.25);
+}
+
+/* Status messages */
+.match-actions__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.match-actions__status--locked {
+  background-color: rgba(255, 193, 7, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.match-actions__status--judging {
+  background-color: rgba(33, 150, 243, 0.15);
+  color: var(--vscode-charts-blue, #2196f3);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.match-actions__status--finalized {
+  background-color: rgba(76, 175, 80, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}

@@ -1,0 +1,240 @@
+/* HistoryTab Component Styles */
+
+.history-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+/* Stats Overview */
+.stats-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--border);
+}
+
+.stats-overview__total,
+.stats-overview__winrate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stats-overview__value {
+  font-size: 1.4em;
+  font-weight: 600;
+  color: var(--foreground);
+  line-height: 1.2;
+}
+
+.stats-overview__label {
+  font-size: 0.7em;
+  color: var(--foreground-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.stats-overview__breakdown {
+  display: flex;
+  gap: 12px;
+}
+
+.stats-overview__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stats-overview__stat-value {
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stats-overview__stat-label {
+  font-size: 0.7em;
+  font-weight: 500;
+}
+
+.stats-overview__stat--win .stats-overview__stat-value {
+  color: var(--success);
+}
+
+.stats-overview__stat--loss .stats-overview__stat-value {
+  color: var(--error);
+}
+
+.stats-overview__stat--draw .stats-overview__stat-value {
+  color: var(--warning);
+}
+
+/* History List */
+.history-tab__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Loading Skeleton */
+.history-tab__loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-card-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+}
+
+.history-card-skeleton__result {
+  width: 48px;
+  height: 40px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--vscode-editor-background) 25%,
+    var(--background-secondary) 50%,
+    var(--vscode-editor-background) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+.history-card-skeleton__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-card-skeleton__title {
+  height: 14px;
+  width: 70%;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--vscode-editor-background) 25%,
+    var(--background-secondary) 50%,
+    var(--vscode-editor-background) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+.history-card-skeleton__meta {
+  height: 12px;
+  width: 50%;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--vscode-editor-background) 25%,
+    var(--background-secondary) 50%,
+    var(--vscode-editor-background) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  animation-delay: 0.2s;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Empty State */
+.history-tab__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 16px;
+  flex: 1;
+}
+
+.history-tab__empty-icon {
+  font-size: 3em;
+  margin-bottom: 12px;
+  opacity: 0.7;
+}
+
+.history-tab__empty-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 4px;
+}
+
+.history-tab__empty-description {
+  font-size: 0.9em;
+  color: var(--foreground-muted);
+  max-width: 240px;
+}
+
+/* Error State */
+.history-tab__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 16px;
+  flex: 1;
+}
+
+.history-tab__error-icon {
+  font-size: 2.5em;
+  color: var(--warning);
+  margin-bottom: 12px;
+}
+
+.history-tab__error-message {
+  font-size: 0.9em;
+  color: var(--error);
+  margin-bottom: 12px;
+}
+
+.history-tab__retry-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.9em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.history-tab__retry-button:hover {
+  background-color: var(--primary-hover);
+}
+
+.history-tab__retry-button:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 2px;
+}
+
+/* Loading indicator */
+.history-tab__loading-indicator {
+  text-align: center;
+  padding: 8px;
+  font-size: 0.85em;
+  color: var(--foreground-muted);
+}

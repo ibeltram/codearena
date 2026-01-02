@@ -1,0 +1,82 @@
+/* MatchTimer Component Styles */
+
+.match-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  text-align: center;
+}
+
+.match-timer__label {
+  font-size: 0.85em;
+  color: var(--foreground-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.match-timer__time {
+  font-size: 2.5em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--vscode-editor-font-family, monospace);
+  line-height: 1.2;
+  transition: color 0.3s ease;
+}
+
+.match-timer__warning-text {
+  font-size: 0.8em;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* Normal state */
+.match-timer--normal .match-timer__time {
+  color: var(--foreground);
+}
+
+/* Warning state (< 5 min) */
+.match-timer--warning .match-timer__time {
+  color: var(--warning);
+}
+
+.match-timer--warning .match-timer__warning-text {
+  color: var(--warning);
+}
+
+/* Critical state (< 1 min) */
+.match-timer--critical .match-timer__time {
+  color: var(--error);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.match-timer--critical .match-timer__warning-text {
+  color: var(--error);
+  font-weight: 600;
+}
+
+/* Expired state */
+.match-timer--expired .match-timer__time {
+  color: var(--error);
+}
+
+.match-timer--expired .match-timer__warning-text {
+  color: var(--error);
+  font-weight: 600;
+}
+
+/* Pulse animation for critical state */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.02);
+  }
+}
