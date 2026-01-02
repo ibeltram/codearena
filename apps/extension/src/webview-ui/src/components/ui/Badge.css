@@ -1,0 +1,114 @@
+/* Badge Component Styles */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.75em;
+  font-weight: 500;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Base Variants */
+.badge--default {
+  background-color: var(--background-secondary);
+  color: var(--foreground);
+}
+
+.badge--success {
+  background-color: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.badge--warning {
+  background-color: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.badge--error {
+  background-color: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+.badge--info {
+  background-color: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+.badge--muted {
+  background-color: var(--background-secondary);
+  color: var(--foreground-muted);
+}
+
+/* Category Badges */
+.badge--category {
+  text-transform: capitalize;
+}
+
+.badge--category-frontend {
+  background-color: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+.badge--category-backend {
+  background-color: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.badge--category-fullstack {
+  background-color: rgba(192, 132, 252, 0.2);
+  color: #c084fc;
+}
+
+.badge--category-algorithm {
+  background-color: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.badge--category-devops {
+  background-color: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+}
+
+/* Difficulty Badges */
+.badge--difficulty-easy {
+  background-color: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.badge--difficulty-medium {
+  background-color: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.badge--difficulty-hard {
+  background-color: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+}
+
+.badge--difficulty-expert {
+  background-color: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+/* Result Badges */
+.badge--result-win {
+  background-color: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.badge--result-loss {
+  background-color: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+.badge--result-draw {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.badge--result-in_progress {
+  background-color: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
