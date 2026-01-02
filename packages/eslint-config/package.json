@@ -9,8 +9,8 @@
     "node.js"
   ],
   "dependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.13.0",
-    "@typescript-eslint/parser": "^6.13.0",
+    "@typescript-eslint/eslint-plugin": "^8.51.0",
+    "@typescript-eslint/parser": "^8.51.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.0"
   },
