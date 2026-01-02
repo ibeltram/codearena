@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 
 import { healthRoutes } from './health';
+import { metricsRoutes } from './metrics';
 import { authRoutes } from './auth';
 import { authGitHubRoutes } from './auth-github';
 import { authGoogleRoutes } from './auth-google';
@@ -28,6 +29,9 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Health check routes
   await app.register(healthRoutes);
+
+  // Prometheus metrics routes
+  await app.register(metricsRoutes);
 
   // Auth routes (device code flow, token refresh, etc.)
   await app.register(authRoutes);

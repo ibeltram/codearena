@@ -18,6 +18,7 @@ import {
   registerCors,
   registerErrorHandler,
   registerJwt,
+  registerMetrics,
   registerRequestId,
   registerRateLimit,
   registerRbac,
@@ -38,6 +39,7 @@ async function buildApp() {
   await app.register(helmet, { global: true });
   await app.register(sensible);
   await registerRequestId(app);
+  await registerMetrics(app); // Prometheus metrics collection
   await registerCookie(app); // Cookie support for session management
   await registerCors(app);
   await registerRateLimit(app);

@@ -1,5 +1,6 @@
 export { registerCookie } from './cookie';
 export { registerCors } from './cors';
+export { registerMetrics } from './metrics';
 export { registerErrorHandler } from './errorHandler';
 export { registerJwt } from './jwt';
 export { registerRequestId } from './requestId';
