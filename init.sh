@@ -70,7 +70,7 @@ install_deps() {
 # Start infrastructure services
 start_infra() {
     echo -e "${YELLOW}Starting infrastructure services...${NC}"
-    docker compose up -d postgres redis minio
+    docker compose up -d postgres pgbouncer redis minio
 
     # Wait for services to be ready
     echo -e "  Waiting for PostgreSQL..."
@@ -78,6 +78,12 @@ start_infra() {
         sleep 1
     done
     echo -e "  ${GREEN}✓${NC} PostgreSQL ready"
+
+    echo -e "  Waiting for PgBouncer..."
+    until docker compose exec -T pgbouncer pg_isready -h localhost -p 5432 -U codearena > /dev/null 2>&1; do
+        sleep 1
+    done
+    echo -e "  ${GREEN}✓${NC} PgBouncer ready"
 
     echo -e "  Waiting for Redis..."
     until docker compose exec -T redis redis-cli ping > /dev/null 2>&1; do

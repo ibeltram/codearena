@@ -5,9 +5,9 @@ services:
     image: postgres:16-alpine
     container_name: reporivals-postgres
     environment:
-      POSTGRES_USER: reporivals
-      POSTGRES_PASSWORD: reporivals
-      POSTGRES_DB: reporivals
+      POSTGRES_USER: codearena
+      POSTGRES_PASSWORD: codearena
+      POSTGRES_DB: codearena
     ports:
       - "5433:5432"  # Direct access on 5433 for admin tasks
     volumes:
@@ -15,7 +15,7 @@ services:
       - ./config/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reporivals"]
+      test: ["CMD-SHELL", "pg_isready -U codearena"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,7 +25,7 @@ services:
     image: edoburu/pgbouncer:1.21.0-p0
     container_name: reporivals-pgbouncer
     environment:
-      DATABASE_URL: postgres://reporivals:reporivals@postgres:5432/reporivals
+      DATABASE_URL: postgres://codearena:codearena@postgres:5432/codearena
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 20
@@ -43,7 +43,7 @@ services:
       LOG_DISCONNECTIONS: 1
       LOG_POOLER_ERRORS: 1
       STATS_PERIOD: 60
-      ADMIN_USERS: reporivals
+      ADMIN_USERS: codearena
       AUTH_TYPE: scram-sha-256
     ports:
       - "5432:5432"  # Applications connect through PgBouncer
@@ -52,7 +52,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "reporivals"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "codearena"]
       interval: 5s
       timeout: 5s
       retries: 5

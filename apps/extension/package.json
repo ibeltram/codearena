@@ -4,11 +4,46 @@
   "description": "Competitive coding platform - join matches and submit directly from VS Code",
   "version": "0.1.0",
   "publisher": "reporivals",
+  "license": "MIT",
+  "icon": "resources/icon.png",
+  "galleryBanner": {
+    "color": "#1a1a2e",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reporivals/reporivals"
+  },
+  "bugs": {
+    "url": "https://github.com/reporivals/reporivals/issues"
+  },
+  "homepage": "https://reporivals.dev",
+  "keywords": [
+    "competitive",
+    "coding",
+    "challenges",
+    "competition",
+    "leaderboard",
+    "programming"
+  ],
+  "badges": [
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/v/reporivals.reporivals",
+      "href": "https://marketplace.visualstudio.com/items?itemName=reporivals.reporivals",
+      "description": "VS Code Marketplace Version"
+    },
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/i/reporivals.reporivals",
+      "href": "https://marketplace.visualstudio.com/items?itemName=reporivals.reporivals",
+      "description": "VS Code Marketplace Installs"
+    }
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Education"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
@@ -171,6 +206,16 @@
           "type": "number",
           "default": 50,
           "description": "Maximum submission size in MB"
+        },
+        "reporivals.telemetry.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable anonymous telemetry and error reporting to help improve RepoRivals. Data collected includes usage patterns and error reports - **never** code, file contents, or personal information. This setting is opt-in and respects VS Code's global telemetry settings."
+        },
+        "reporivals.telemetry.sentryDsn": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Sentry DSN for error reporting (leave empty to disable Sentry). Only used when telemetry is enabled."
         }
       }
     },
