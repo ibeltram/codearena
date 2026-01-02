@@ -1,3 +1,4 @@
 packages:
   - 'apps/*'
+  - 'apps/extension/src/webview-ui'
   - 'packages/*'
