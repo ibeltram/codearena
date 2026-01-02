@@ -18,6 +18,18 @@ async function seed() {
       .returning();
     console.info('✅ Created admin user:', adminUser.email);
 
+    // Create Iacopo admin user
+    const [iacopoAdmin] = await db
+      .insert(users)
+      .values({
+        email: 'iacopo8@gmail.com',
+        displayName: 'Iacopo',
+        roles: ['admin', 'user'],
+        isVerified: true,
+      })
+      .returning();
+    console.info('✅ Created admin user:', iacopoAdmin.email);
+
     // Create test users
     const testUsers = await db
       .insert(users)
@@ -39,6 +51,7 @@ async function seed() {
     // Create credit accounts for all users
     await db.insert(creditAccounts).values([
       { userId: adminUser.id, balanceAvailable: 10000 },
+      { userId: iacopoAdmin.id, balanceAvailable: 10000 },
       { userId: testUsers[0].id, balanceAvailable: 1000 },
       { userId: testUsers[1].id, balanceAvailable: 1000 },
     ]);

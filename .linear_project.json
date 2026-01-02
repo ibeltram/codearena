@@ -8,9 +8,9 @@
   "project_url": "https://linear.app/quiverflow/project/codearena-6e53d3100b68",
   "meta_issue_id": "55fbd3f3-972b-452c-83af-2292a058aa13",
   "meta_issue_identifier": "QUI-55",
-  "total_issues": 116,
-  "issue_range": "QUI-5 to QUI-131",
-  "notes": "Project initialized by initializer agent. 50 issues created covering infrastructure, authentication, challenges, matches, submissions, judging, credits, web UI, VS Code extension, admin, tournaments, and styling. Renamed to RepoRivals (QUI-56). Rewards Marketplace feature added (15 issues). Complete spec addition (50 issues) covering all remaining phases.",
+  "total_issues": 185,
+  "issue_range": "QUI-5 to QUI-293",
+  "notes": "Extension Webview Sidebar feature added (69 issues) - React-based webview replacing TreeDataProviders for richer UI",
   "feature_additions": [
     {
       "date": "2025-12-31T09:56:00.000Z",
@@ -39,6 +39,22 @@
         "Phase 11: Production Hardening & Scale"
       ],
       "description": "Complete implementation specification covering infrastructure, observability, auth flows, challenge versioning, match state machine, judging pipeline, credit ledger, anti-abuse, tournament formats, and production hardening"
+    },
+    {
+      "date": "2026-01-02T07:35:00.000Z",
+      "spec_file": "extension_webview_sidebar_spec.txt",
+      "issues_added": 69,
+      "issue_range": "QUI-225 to QUI-293",
+      "phases_covered": [
+        "Phase 1: Infrastructure Setup",
+        "Phase 2: SidebarProvider Implementation",
+        "Phase 3: Core React App Structure",
+        "Phase 4: UI Components",
+        "Phase 5: Feature Tabs",
+        "Phase 6: Extension Integration",
+        "Phase 7: Testing and Polish"
+      ],
+      "description": "Extension React Webview Sidebar - Replaces TreeDataProviders with unified React webview for richer UI, VS Code native theming, real-time timer updates, and tab-based navigation"
     }
   ]
 }
