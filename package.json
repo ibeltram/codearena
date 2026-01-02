@@ -30,8 +30,8 @@
     "test:load:all": "npm run test:load:health && npm run test:load:matches && npm run test:load:submissions && npm run test:load"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
-    "eslint": "^8.55.0",
+    "@types/node": "^25.0.3",
+    "eslint": "^9.39.2",
     "husky": "^8.0.3",
     "lint-staged": "^15.2.0",
     "prettier": "^3.1.0",
