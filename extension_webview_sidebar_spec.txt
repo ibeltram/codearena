@@ -1,0 +1,950 @@
+<project_specification version="1.0">
+  <project_name>RepoRivals Extension - React Webview Sidebar</project_name>
+  <status>Feature Specification</status>
+
+  <overview>
+    This specification describes the implementation of a React-based webview sidebar for the
+    RepoRivals VS Code extension. The current extension uses native VS Code TreeDataProviders
+    for the sidebar views (Challenges, Active Match, Recent Matches), which limits UI richness
+    and creates a significant gap between the extension and web app experiences.
+
+    This feature replaces the three TreeDataProviders with a single unified React webview that
+    provides a richer, more interactive user interface while maintaining VS Code native theming
+    and performance characteristics.
+  </overview>
+
+  <high_level_goals>
+    <goal>Replace TreeDataProviders with a single React webview for richer UI capabilities.</goal>
+    <goal>Close the experience gap between the extension and web app.</goal>
+    <goal>Maintain VS Code native look and feel through CSS variable theming.</goal>
+    <goal>Enable future component reuse patterns between extension and web app.</goal>
+    <goal>Provide smooth real-time updates for match timer and status changes.</goal>
+  </high_level_goals>
+
+  <non_goals>
+    <non_goal>Share React components directly with the web app (separate webview-ui folder preferred).</non_goal>
+    <non_goal>Implement hot module reload for development (simple build workflow preferred).</non_goal>
+    <non_goal>Replace existing webview panels (ActiveMatchPanel, SubmissionPanel) which serve different purposes.</non_goal>
+    <non_goal>Add new features beyond what TreeViews currently provide (parity first).</non_goal>
+  </non_goals>
+
+  <current_state>
+    <extension_location>apps/extension/</extension_location>
+
+    <current_views>
+      <view id="reporivals-challenges" type="TreeDataProvider">
+        <provider>ChallengesProvider</provider>
+        <file>src/providers/challenges-provider.ts</file>
+        <features>
+          - Challenge list grouped by category
+          - Filter by category command
+          - Toggle grouping command
+          - Join match inline action
+          - Open in web context menu
+        </features>
+      </view>
+
+      <view id="reporivals-match" type="TreeDataProvider">
+        <provider>MatchProvider</provider>
+        <file>src/providers/match-provider.ts</file>
+        <features>
+          - Active match info as tree items
+          - Timer display (limited formatting)
+          - Participant list with ready/submission status
+          - Stakes display
+        </features>
+      </view>
+
+      <view id="reporivals-history" type="TreeDataProvider">
+        <provider>HistoryProvider</provider>
+        <file>src/providers/history-provider.ts</file>
+        <features>
+          - Recent match list
+          - Win/loss/draw result icons
+          - Challenge and opponent info
+          - Click to view details
+        </features>
+      </view>
+    </current_views>
+
+    <existing_services>
+      <service name="AuthService" file="src/services/auth-service.ts">
+        - Device code authentication
+        - Token storage and refresh
+        - Sign in/out flows
+      </service>
+
+      <service name="MatchService" file="src/services/match-service.ts">
+        - SSE connection for real-time updates
+        - Timer management
+        - Match state tracking
+        - Ready/forfeit actions
+      </service>
+
+      <service name="SubmissionService" file="src/services/submission-service.ts">
+        - File packaging and upload
+        - Submission locking
+        - Progress tracking
+      </service>
+
+      <service name="StatusBarService" file="src/services/status-bar-service.ts">
+        - Timer display in status bar
+        - Warning colors at threshold
+      </service>
+    </existing_services>
+
+    <existing_webview_panels>
+      <panel name="ActiveMatchPanel" file="src/panels/active-match-panel.ts">
+        - Full match view opened as editor tab
+        - Vanilla HTML/CSS/JS (no React)
+        - postMessage communication pattern
+        - CSP with nonces
+      </panel>
+
+      <panel name="SubmissionPanel" file="src/panels/submission-panel.ts">
+        - File selection and preview
+        - Upload progress
+        - Vanilla HTML/CSS/JS
+      </panel>
+    </existing_webview_panels>
+
+    <limitations>
+      - TreeViews cannot display rich UI (timers, progress bars, avatars)
+      - No hover states or interactive elements beyond tree items
+      - Limited styling options (icons and labels only)
+      - Significant visual gap compared to web app
+      - Three separate views instead of unified experience
+    </limitations>
+  </current_state>
+
+  <technology_stack>
+    <webview_framework>
+      <framework>React 18</framework>
+      <bundler>Vite 5</bundler>
+      <language>TypeScript 5.3+</language>
+      <styling>CSS with VS Code CSS variables</styling>
+      <state_management>React Context + useReducer</state_management>
+    </webview_framework>
+
+    <extension_integration>
+      <provider_api>vscode.WebviewViewProvider</provider_api>
+      <communication>postMessage bidirectional</communication>
+      <state_persistence>vscode.getState() / setState()</state_persistence>
+      <security>Content Security Policy with nonces</security>
+    </extension_integration>
+
+    <build_system>
+      <webview_build>Vite production build</webview_build>
+      <extension_build>esbuild (existing)</extension_build>
+      <output_directory>dist/webview/</output_directory>
+      <entry_files>index.js, index.css</entry_files>
+    </build_system>
+  </technology_stack>
+
+  <design_principles>
+    <vs_code_native_theming>
+      - Use VS Code CSS variables for all colors (--vscode-*)
+      - Match native VS Code component appearance
+      - Support light and dark themes automatically
+      - Respect high contrast mode
+    </vs_code_native_theming>
+
+    <performance>
+      - Single bundled JS file for fast loading
+      - Minimal dependencies in webview
+      - Efficient state updates via targeted messages
+      - No retainContextWhenHidden (use state persistence instead)
+    </performance>
+
+    <communication_patterns>
+      - Typed message protocol between extension and webview
+      - Commands from webview delegate to existing VS Code commands
+      - State updates from extension to webview are granular
+      - Webview never makes API calls directly
+    </communication_patterns>
+
+    <separation_of_concerns>
+      - Webview handles UI rendering only
+      - Extension handles all business logic and API calls
+      - Existing services remain unchanged
+      - SidebarProvider bridges services to webview
+    </separation_of_concerns>
+  </design_principles>
+
+  <project_structure>
+    <new_files>
+      <file path="src/providers/sidebar-provider.ts">
+        WebviewViewProvider implementation
+        - resolveWebviewView lifecycle
+        - HTML generation with CSP
+        - Message handling
+        - Public update methods for services
+      </file>
+
+      <file path="src/webview-ui/package.json">
+        Webview-specific dependencies
+        - react, react-dom
+        - Vite dev dependencies
+        - TypeScript types
+      </file>
+
+      <file path="src/webview-ui/vite.config.ts">
+        Vite build configuration
+        - Output to ../../dist/webview/
+        - Single bundle (no code splitting)
+        - Production minification
+      </file>
+
+      <file path="src/webview-ui/tsconfig.json">
+        TypeScript configuration for webview
+        - React JSX transform
+        - Strict mode enabled
+      </file>
+
+      <file path="src/webview-ui/index.html">
+        HTML template for Vite
+        - Root div for React mount
+        - Module script entry point
+      </file>
+
+      <file path="src/webview-ui/src/index.tsx">
+        React entry point
+        - createRoot and render
+        - StrictMode wrapper
+        - Global CSS import
+      </file>
+
+      <file path="src/webview-ui/src/App.tsx">
+        Main application component
+        - Tab navigation (Challenges | Match | History)
+        - Authentication gate
+        - Message listener setup
+        - Context provider wrapper
+      </file>
+
+      <file path="src/webview-ui/src/vscode.d.ts">
+        VS Code API type declarations
+        - acquireVsCodeApi interface
+        - postMessage, getState, setState
+      </file>
+
+      <file path="src/webview-ui/src/styles/globals.css">
+        Global styles and VS Code variable mappings
+        - CSS variable aliases for semantic naming
+        - Base element styles
+        - Scrollbar styling to match VS Code
+        - Focus visible states
+      </file>
+
+      <file path="src/webview-ui/src/types/messages.ts">
+        Message protocol type definitions
+        - WebviewCommand union type
+        - ExtensionMessage union type
+        - WebviewState interface
+      </file>
+
+      <file path="src/webview-ui/src/context/ExtensionContext.tsx">
+        Global state context
+        - State reducer for all message types
+        - Provider component
+        - useExtension hook
+      </file>
+
+      <file path="src/webview-ui/src/hooks/useVSCodeMessaging.ts">
+        VS Code messaging hook
+        - Typed command senders
+        - Singleton vscode API instance
+      </file>
+    </new_files>
+
+    <component_structure>
+      <directory path="src/webview-ui/src/components/ui/">
+        Base UI components
+        - Button.tsx (variants: primary, secondary, ghost, destructive)
+        - Badge.tsx (status indicators, category labels)
+        - Card.tsx (container with hover states)
+        - Tabs.tsx (tab list, trigger, content)
+        - Avatar.tsx (user avatars with fallback)
+        - Spinner.tsx (loading indicator)
+      </directory>
+
+      <directory path="src/webview-ui/src/components/challenges/">
+        Challenges tab components
+        - ChallengesTab.tsx (main container with filter state)
+        - ChallengeCard.tsx (individual challenge display)
+        - CategoryFilter.tsx (category dropdown/chips)
+        - ChallengesList.tsx (scrollable list container)
+      </directory>
+
+      <directory path="src/webview-ui/src/components/match/">
+        Active match tab components
+        - ActiveMatchTab.tsx (main container)
+        - MatchTimer.tsx (countdown with warning states)
+        - ParticipantCard.tsx (user info, ready status, submission status)
+        - MatchStatusBadge.tsx (status indicator)
+        - MatchActions.tsx (submit, lock, forfeit buttons)
+        - ConnectionStatus.tsx (SSE connection indicator)
+      </directory>
+
+      <directory path="src/webview-ui/src/components/history/">
+        History tab components
+        - HistoryTab.tsx (main container)
+        - HistoryCard.tsx (match result card)
+        - StatsOverview.tsx (win/loss/draw summary)
+      </directory>
+
+      <directory path="src/webview-ui/src/components/shared/">
+        Shared components
+        - EmptyState.tsx (no data messages with actions)
+        - ErrorState.tsx (error display with retry)
+        - LoadingState.tsx (skeleton loading)
+        - SignInPrompt.tsx (authentication required)
+      </directory>
+    </component_structure>
+
+    <files_to_modify>
+      <file path="package.json">
+        - Update views config to type: webview
+        - Add webview build scripts
+        - Add concurrently dev dependency
+      </file>
+
+      <file path="src/extension.ts">
+        - Import SidebarProvider
+        - Register WebviewViewProvider
+        - Wire services to provider update methods
+        - Remove TreeView registrations
+      </file>
+    </files_to_modify>
+
+    <files_to_delete>
+      <file path="src/providers/challenges-provider.ts">After migration verified</file>
+      <file path="src/providers/match-provider.ts">After migration verified</file>
+      <file path="src/providers/history-provider.ts">After migration verified</file>
+    </files_to_delete>
+  </project_structure>
+
+  <package_json_changes>
+    <views_configuration>
+      <before>
+        "views": {
+          "reporivals": [
+            { "id": "reporivals-challenges", "name": "Challenges" },
+            { "id": "reporivals-match", "name": "Active Match" },
+            { "id": "reporivals-history", "name": "Recent Matches" }
+          ]
+        }
+      </before>
+      <after>
+        "views": {
+          "reporivals": [
+            {
+              "id": "reporivals-sidebar",
+              "name": "RepoRivals",
+              "type": "webview"
+            }
+          ]
+        }
+      </after>
+    </views_configuration>
+
+    <views_welcome>
+      <note>Remove viewsWelcome entries - webview handles its own empty states</note>
+    </views_welcome>
+
+    <scripts>
+      <script name="build">pnpm run build:webview &amp;&amp; esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap</script>
+      <script name="build:prod">pnpm run build:webview:prod &amp;&amp; esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify</script>
+      <script name="build:webview">cd src/webview-ui &amp;&amp; pnpm run build</script>
+      <script name="build:webview:prod">cd src/webview-ui &amp;&amp; pnpm run build:prod</script>
+      <script name="dev">concurrently "pnpm run build --watch" "cd src/webview-ui &amp;&amp; pnpm run dev"</script>
+    </scripts>
+
+    <dev_dependencies>
+      <add>concurrently: ^8.2.0</add>
+    </dev_dependencies>
+
+    <menus_to_remove>
+      <note>Remove view/title menu items for old view IDs</note>
+      <note>Remove view/item/context items (webview handles interactions)</note>
+    </menus_to_remove>
+  </package_json_changes>
+
+  <webview_package_json>
+    <content>
+      {
+        "name": "reporivals-webview",
+        "private": true,
+        "type": "module",
+        "scripts": {
+          "dev": "vite build --watch",
+          "build": "vite build",
+          "build:prod": "vite build --mode production",
+          "typecheck": "tsc --noEmit"
+        },
+        "dependencies": {
+          "react": "^18.2.0",
+          "react-dom": "^18.2.0"
+        },
+        "devDependencies": {
+          "@types/react": "^18.2.0",
+          "@types/react-dom": "^18.2.0",
+          "@types/vscode-webview": "^1.57.0",
+          "@vitejs/plugin-react": "^4.2.0",
+          "typescript": "^5.3.0",
+          "vite": "^5.0.0"
+        }
+      }
+    </content>
+  </webview_package_json>
+
+  <communication_protocol>
+    <webview_to_extension>
+      <description>Commands sent from webview to extension via postMessage</description>
+      <commands>
+        <command name="signIn">Trigger sign in flow</command>
+        <command name="signOut">Trigger sign out flow</command>
+        <command name="refreshChallenges">Reload challenges from API</command>
+        <command name="filterChallenges" params="category: string | null">Set category filter</command>
+        <command name="joinMatch" params="challengeId: string">Join a match for challenge</command>
+        <command name="openChallengeInWeb" params="slug: string">Open challenge in browser</command>
+        <command name="submit">Open submission flow</command>
+        <command name="lockSubmission">Lock current submission</command>
+        <command name="setReady">Mark participant as ready</command>
+        <command name="forfeit">Forfeit current match</command>
+        <command name="openMatchInWeb">Open match in browser</command>
+        <command name="refreshHistory">Reload match history</command>
+        <command name="viewMatchDetails" params="matchId: string">View match details</command>
+      </commands>
+    </webview_to_extension>
+
+    <extension_to_webview>
+      <description>State updates sent from extension to webview via postMessage</description>
+      <messages>
+        <message type="stateUpdate" params="state: WebviewState">Full state sync</message>
+        <message type="authUpdate" params="isAuthenticated: boolean, user: UserInfo | null">Auth state change</message>
+        <message type="challengesUpdate" params="challenges: Challenge[], loading: boolean, error: string | null">Challenges data update</message>
+        <message type="matchUpdate" params="match: Match | null">Active match change</message>
+        <message type="timerUpdate" params="timeRemaining: number">Timer tick (seconds)</message>
+        <message type="connectionUpdate" params="state: 'connected' | 'disconnected' | 'reconnecting'">SSE connection state</message>
+        <message type="historyUpdate" params="matches: MatchHistoryItem[], loading: boolean, error: string | null">History data update</message>
+      </messages>
+    </extension_to_webview>
+
+    <webview_state_interface>
+      <fields>
+        <field name="isAuthenticated" type="boolean"/>
+        <field name="user" type="{ displayName: string; email: string } | null"/>
+        <field name="challenges" type="Challenge[]"/>
+        <field name="challengesLoading" type="boolean"/>
+        <field name="challengesError" type="string | null"/>
+        <field name="categoryFilter" type="string | null"/>
+        <field name="match" type="Match | null"/>
+        <field name="timeRemaining" type="number"/>
+        <field name="connectionState" type="'connected' | 'disconnected' | 'reconnecting'"/>
+        <field name="history" type="MatchHistoryItem[]"/>
+        <field name="historyLoading" type="boolean"/>
+        <field name="historyError" type="string | null"/>
+        <field name="activeTab" type="'challenges' | 'match' | 'history'"/>
+      </fields>
+    </webview_state_interface>
+  </communication_protocol>
+
+  <styling_approach>
+    <vs_code_css_variables>
+      <mapping>
+        --background: var(--vscode-editor-background)
+        --background-secondary: var(--vscode-sideBar-background)
+        --foreground: var(--vscode-foreground)
+        --foreground-muted: var(--vscode-descriptionForeground)
+        --border: var(--vscode-panel-border)
+        --input-border: var(--vscode-input-border)
+        --focus-border: var(--vscode-focusBorder)
+        --primary: var(--vscode-button-background)
+        --primary-foreground: var(--vscode-button-foreground)
+        --primary-hover: var(--vscode-button-hoverBackground)
+        --secondary: var(--vscode-button-secondaryBackground)
+        --secondary-foreground: var(--vscode-button-secondaryForeground)
+        --success: var(--vscode-charts-green, #4caf50)
+        --warning: var(--vscode-charts-yellow, #ff9800)
+        --error: var(--vscode-charts-red, #f44336)
+      </mapping>
+    </vs_code_css_variables>
+
+    <component_styling>
+      - CSS modules or plain CSS (no Tailwind in webview)
+      - BEM-style class naming for clarity
+      - VS Code radius (4px default)
+      - VS Code font family and size from variables
+      - Match VS Code scrollbar appearance
+    </component_styling>
+
+    <responsive_considerations>
+      - Sidebar width varies (user-resizable)
+      - Minimum width ~200px, typical ~300px
+      - Stack elements vertically
+      - Truncate long text with ellipsis
+      - Compact spacing for information density
+    </responsive_considerations>
+  </styling_approach>
+
+  <content_security_policy>
+    <policy>
+      default-src 'none';
+      style-src ${webview.cspSource} 'unsafe-inline';
+      script-src 'nonce-${nonce}';
+      img-src ${webview.cspSource} https:;
+      font-src ${webview.cspSource};
+    </policy>
+
+    <notes>
+      - Nonce generated per webview instance
+      - unsafe-inline for style-src allows VS Code theme injection
+      - https: for img-src allows avatar URLs
+      - No connect-src (webview doesn't make HTTP requests)
+    </notes>
+  </content_security_policy>
+
+  <extension_integration>
+    <sidebar_provider_api>
+      <method name="resolveWebviewView">
+        - Called when view first becomes visible
+        - Set webview options (enableScripts, localResourceRoots)
+        - Generate HTML with CSP and script loading
+        - Set up message listener
+        - Send initial state
+      </method>
+
+      <method name="updateAuth(isAuthenticated, user)">
+        - Called by auth service on state change
+        - Posts authUpdate message to webview
+      </method>
+
+      <method name="updateChallenges(challenges, loading, error)">
+        - Called after challenges API response
+        - Posts challengesUpdate message to webview
+      </method>
+
+      <method name="updateMatch(match)">
+        - Called by match service on match change
+        - Posts matchUpdate message to webview
+      </method>
+
+      <method name="updateTimer(timeRemaining)">
+        - Called by match service timer tick
+        - Posts timerUpdate message to webview (every second)
+      </method>
+
+      <method name="updateConnectionState(state)">
+        - Called by match service on SSE state change
+        - Posts connectionUpdate message to webview
+      </method>
+
+      <method name="updateHistory(matches, loading, error)">
+        - Called after history API response
+        - Posts historyUpdate message to webview
+      </method>
+    </sidebar_provider_api>
+
+    <extension_ts_changes>
+      <import>import { SidebarProvider } from './providers/sidebar-provider';</import>
+
+      <register>
+        const sidebarProvider = new SidebarProvider(context.extensionUri, context);
+        context.subscriptions.push(
+          vscode.window.registerWebviewViewProvider(
+            SidebarProvider.viewType,
+            sidebarProvider,
+            { webviewOptions: { retainContextWhenHidden: false } }
+          )
+        );
+      </register>
+
+      <service_wiring>
+        // Auth updates
+        authService.onAuthStateChange((isAuthenticated, user) => {
+          sidebarProvider.updateAuth(isAuthenticated, user);
+        });
+
+        // Match updates
+        matchService.onMatchUpdate((match) => {
+          sidebarProvider.updateMatch(match);
+        });
+
+        matchService.onTimerTick((remaining) => {
+          sidebarProvider.updateTimer(remaining);
+        });
+
+        matchService.onConnectionStateChange((state) => {
+          sidebarProvider.updateConnectionState(state);
+        });
+
+        // Challenge refresh handler
+        // In refreshChallenges command:
+        sidebarProvider.updateChallenges(challenges, false, null);
+
+        // History refresh handler
+        // In refreshHistory/fetchMatchHistory:
+        sidebarProvider.updateHistory(matches, false, null);
+      </service_wiring>
+
+      <remove>
+        // Remove TreeView registrations
+        // const challengesView = vscode.window.createTreeView('reporivals-challenges', {...});
+        // const matchView = vscode.window.createTreeView('reporivals-match', {...});
+        // const historyView = vscode.window.createTreeView('reporivals-history', {...});
+      </remove>
+    </extension_ts_changes>
+  </extension_integration>
+
+  <component_specifications>
+    <challenges_tab>
+      <layout>
+        - Category filter dropdown/chips at top
+        - Scrollable list of challenge cards
+        - Empty state when no challenges
+        - Loading skeleton during fetch
+        - Error state with retry button
+      </layout>
+
+      <challenge_card>
+        - Title (truncated if long)
+        - Category badge (colored by category)
+        - Difficulty badge
+        - Time limit display
+        - Stake amount display
+        - "Join" button (primary action)
+        - "View" button (secondary, opens in web)
+        - Hover state with slight elevation
+      </challenge_card>
+    </challenges_tab>
+
+    <active_match_tab>
+      <no_match_state>
+        - "No active match" message
+        - "Browse Challenges" call to action
+      </no_match_state>
+
+      <match_display>
+        - Challenge title header
+        - Match status badge
+        - Connection status indicator
+        - Timer (large, prominent)
+          - Normal state: white/default
+          - Warning state (5 min): yellow
+          - Critical state (1 min): red, pulsing
+        - Participant section
+          - Two participant cards (you vs opponent)
+          - Each shows: avatar, name, ready status, submission status
+        - Action buttons section
+          - Ready (if in matched state)
+          - Submit (if in_progress)
+          - Lock (if submitted but not locked)
+          - Forfeit (always available during match)
+          - Open in Web (secondary)
+        - Stakes display
+      </match_display>
+    </active_match_tab>
+
+    <history_tab>
+      <stats_overview>
+        - Total matches count
+        - Win/Loss/Draw breakdown
+        - Win rate percentage
+      </stats_overview>
+
+      <match_list>
+        - Scrollable list of history cards
+        - Empty state for new users
+        - Loading skeleton during fetch
+      </match_list>
+
+      <history_card>
+        - Result indicator (win=green, loss=red, draw=yellow)
+        - Challenge title
+        - Opponent name and avatar
+        - Score display (your score vs opponent)
+        - Date completed
+        - Click to view details (opens in web)
+      </history_card>
+    </history_tab>
+
+    <sign_in_prompt>
+      <display>
+        - Shown when not authenticated
+        - "Welcome to RepoRivals" header
+        - Brief description
+        - "Sign In" button (primary)
+        - Links to learn more (opens web)
+      </display>
+    </sign_in_prompt>
+  </component_specifications>
+
+  <state_management>
+    <context_pattern>
+      <state_shape>
+        WebviewState interface (see communication protocol)
+      </state_shape>
+
+      <reducer_actions>
+        - SET_STATE: Full state replacement (from stateUpdate message)
+        - SET_AUTH: Update auth fields
+        - SET_CHALLENGES: Update challenges fields
+        - SET_MATCH: Update match field
+        - SET_TIMER: Update timeRemaining
+        - SET_CONNECTION: Update connectionState
+        - SET_HISTORY: Update history fields
+        - SET_ACTIVE_TAB: Update activeTab
+      </reducer_actions>
+
+      <persistence>
+        - Active tab persisted via vscode.setState()
+        - Restored on webview recreation via vscode.getState()
+        - Full state NOT persisted (re-sent by extension on visibility)
+      </persistence>
+    </context_pattern>
+
+    <message_handling>
+      <setup>
+        useEffect(() => {
+          const handler = (event) => {
+            dispatch({ type: event.data.type, payload: event.data });
+          };
+          window.addEventListener('message', handler);
+          return () => window.removeEventListener('message', handler);
+        }, []);
+      </setup>
+    </message_handling>
+  </state_management>
+
+  <build_configuration>
+    <vite_config>
+      import { defineConfig } from 'vite';
+      import react from '@vitejs/plugin-react';
+      import { resolve } from 'path';
+
+      export default defineConfig({
+        plugins: [react()],
+        build: {
+          outDir: '../../dist/webview',
+          emptyOutDir: true,
+          rollupOptions: {
+            input: resolve(__dirname, 'index.html'),
+            output: {
+              entryFileNames: 'index.js',
+              chunkFileNames: '[name].js',
+              assetFileNames: (assetInfo) => {
+                if (assetInfo.name?.endsWith('.css')) {
+                  return 'index.css';
+                }
+                return '[name][extname]';
+              },
+            },
+          },
+          cssCodeSplit: false,
+          minify: 'esbuild',
+          sourcemap: process.env.NODE_ENV !== 'production',
+        },
+        resolve: {
+          alias: {
+            '@': resolve(__dirname, 'src'),
+          },
+        },
+      });
+    </vite_config>
+  </build_configuration>
+
+  <implementation_phases>
+    <phase name="Phase 1: Infrastructure Setup">
+      <tasks>
+        - Create webview-ui folder structure
+        - Add package.json with React and Vite dependencies
+        - Configure Vite build to output to dist/webview
+        - Create tsconfig.json for webview
+        - Add index.html template
+        - Create basic React entry point
+        - Update extension package.json with webview build scripts
+        - Verify build produces index.js and index.css
+      </tasks>
+    </phase>
+
+    <phase name="Phase 2: SidebarProvider Implementation">
+      <tasks>
+        - Create sidebar-provider.ts skeleton
+        - Implement resolveWebviewView with HTML generation
+        - Implement CSP with nonce generation
+        - Implement asset URI resolution
+        - Add message handler for webview commands
+        - Add public update methods (stubs initially)
+        - Register provider in extension.ts (alongside existing TreeViews)
+        - Test webview loads and displays
+      </tasks>
+    </phase>
+
+    <phase name="Phase 3: Core React App Structure">
+      <tasks>
+        - Create App.tsx with tab structure
+        - Create ExtensionContext with state reducer
+        - Create useVSCodeMessaging hook
+        - Create message types file
+        - Create globals.css with VS Code variable mappings
+        - Implement message listener in App
+        - Create SignInPrompt component
+        - Verify communication between extension and webview
+      </tasks>
+    </phase>
+
+    <phase name="Phase 4: UI Components">
+      <tasks>
+        - Create Button component with variants
+        - Create Badge component
+        - Create Card component
+        - Create Tabs component
+        - Create Avatar component
+        - Create Spinner component
+        - Create EmptyState, ErrorState, LoadingState
+        - Style all components with VS Code variables
+      </tasks>
+    </phase>
+
+    <phase name="Phase 5: Feature Tabs">
+      <tasks>
+        - Implement ChallengesTab with ChallengeCard
+        - Implement CategoryFilter
+        - Implement ActiveMatchTab with MatchTimer
+        - Implement ParticipantCard
+        - Implement MatchActions
+        - Implement ConnectionStatus
+        - Implement HistoryTab with HistoryCard
+        - Implement StatsOverview
+      </tasks>
+    </phase>
+
+    <phase name="Phase 6: Extension Integration">
+      <tasks>
+        - Wire auth service to sidebarProvider.updateAuth
+        - Wire match service to sidebarProvider.updateMatch
+        - Wire timer ticks to sidebarProvider.updateTimer
+        - Wire connection state changes
+        - Wire challenges refresh to updateChallenges
+        - Wire history refresh to updateHistory
+        - Update package.json views to single webview
+        - Remove viewsWelcome entries
+        - Remove view/title menus for old views
+      </tasks>
+    </phase>
+
+    <phase name="Phase 7: Testing and Polish">
+      <tasks>
+        - Test all user flows (sign in, browse, join, submit, history)
+        - Test state persistence across view hide/show
+        - Test theme switching (light/dark)
+        - Test reconnection scenarios
+        - Fix styling issues
+        - Optimize bundle size
+        - Remove old TreeDataProvider files
+        - Update provider index exports
+      </tasks>
+    </phase>
+  </implementation_phases>
+
+  <testing_strategy>
+    <manual_testing>
+      <scenarios>
+        - Sign in flow from sidebar
+        - Browse challenges with filter
+        - Join match from challenge card
+        - View active match with timer
+        - Submit and lock submission
+        - View match history
+        - Switch between tabs
+        - Hide and show sidebar (state restoration)
+        - Light and dark theme appearance
+        - Resize sidebar width
+        - Reconnect after network loss
+      </scenarios>
+    </manual_testing>
+
+    <automated_testing>
+      <note>
+        WebviewViewProvider testing is complex due to VS Code API mocking.
+        Focus on unit testing pure functions and React components in isolation.
+      </note>
+
+      <unit_tests>
+        - Message type guards and validators
+        - State reducer logic
+        - Time formatting utilities
+        - Component rendering with mock data
+      </unit_tests>
+    </automated_testing>
+  </testing_strategy>
+
+  <success_criteria>
+    <functional>
+      - All TreeView functionality preserved in webview
+      - Real-time timer updates display smoothly
+      - State persists across view hide/show
+      - All commands execute correctly
+      - No regressions in match flow
+    </functional>
+
+    <visual>
+      - Matches VS Code native appearance
+      - Works in light and dark themes
+      - Responsive to sidebar width changes
+      - No visual glitches or layout shifts
+    </visual>
+
+    <performance>
+      - Webview loads in under 500ms
+      - Timer updates don't cause jank
+      - Bundle size under 100KB gzipped
+      - Memory usage comparable to TreeViews
+    </performance>
+  </success_criteria>
+
+  <future_considerations>
+    <component_sharing>
+      Once webview patterns are established, consider:
+      - Shared component package in monorepo
+      - Adapter layer for web vs webview contexts
+      - Shared hooks for common functionality
+    </component_sharing>
+
+    <hot_module_reload>
+      For improved development velocity:
+      - Add vite-plugin-vscode-webview-hmr
+      - Configure development CSP
+      - Update dev workflow documentation
+    </hot_module_reload>
+
+    <additional_features>
+      After parity achieved:
+      - Rich notification toasts in sidebar
+      - Inline challenge preview
+      - Quick actions menu
+      - Keyboard navigation
+    </additional_features>
+  </future_considerations>
+
+  <references>
+    <documentation>
+      - VS Code Webview API: https://code.visualstudio.com/api/extension-guides/webview
+      - WebviewViewProvider: https://code.visualstudio.com/api/references/vscode-api#WebviewViewProvider
+      - VS Code UX Guidelines: https://code.visualstudio.com/api/ux-guidelines/sidebars
+    </documentation>
+
+    <existing_code>
+      - ActiveMatchPanel pattern: src/panels/active-match-panel.ts
+      - SubmissionPanel pattern: src/panels/submission-panel.ts
+      - Shared types: packages/shared/src/types/
+      - Web components (inspiration): apps/web/src/components/
+    </existing_code>
+
+    <community_resources>
+      - Cline extension (React webview): https://github.com/cline/cline
+      - VS Code React webview template: https://github.com/estruyf/vscode-react-webview-template
+    </community_resources>
+  </references>
+</project_specification>
