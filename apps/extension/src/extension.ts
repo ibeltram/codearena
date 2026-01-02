@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
-import { ChallengesProvider, MatchProvider, HistoryProvider, SidebarProvider } from './providers';
+import { SidebarProvider } from './providers';
+// Legacy providers - imported directly until fully migrated (see QUI-290)
+import { ChallengesProvider } from './providers/challenges-provider';
+import { MatchProvider } from './providers/match-provider';
+import { HistoryProvider } from './providers/history-provider';
 import { StatusBarService, AuthService, MatchService, SubmissionService, SubmissionSummary } from './services';
 import { ActiveMatchPanel, SubmissionPanel } from './panels';
 import { Challenge, MatchHistoryItem, ExtensionConfig } from './types';
