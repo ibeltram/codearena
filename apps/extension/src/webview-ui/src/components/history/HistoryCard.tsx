@@ -1,5 +1,6 @@
 import React from 'react';
 import { MatchHistoryItem } from '../../types/messages';
+import { formatDate } from '../../utils';
 import './HistoryCard.css';
 
 export interface HistoryCardProps {
@@ -7,27 +8,6 @@ export interface HistoryCardProps {
   match: MatchHistoryItem;
   /** Callback when card is clicked */
   onClick: (matchId: string) => void;
-}
-
-/**
- * Format a date string to a short display format
- */
-function formatDate(dateString?: string): string {
-  if (!dateString) return 'In progress';
-
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 /**

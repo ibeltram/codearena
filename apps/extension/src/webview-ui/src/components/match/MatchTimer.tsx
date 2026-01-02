@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { formatTime } from '../../utils';
 import './MatchTimer.css';
 
 export interface MatchTimerProps {
@@ -8,27 +9,6 @@ export interface MatchTimerProps {
   warningThreshold?: number;
   /** Threshold in seconds for critical state (default: 60 = 1 min) */
   criticalThreshold?: number;
-}
-
-/**
- * Format seconds into HH:MM:SS or MM:SS
- */
-function formatTime(seconds: number): string {
-  if (seconds < 0) seconds = 0;
-
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-
-  if (hours > 0) {
-    return `${hours.toString().padStart(2, '0')}:${minutes
-      .toString()
-      .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-
-  return `${minutes.toString().padStart(2, '0')}:${secs
-    .toString()
-    .padStart(2, '0')}`;
 }
 
 /**
