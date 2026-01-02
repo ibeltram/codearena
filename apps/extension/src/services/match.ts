@@ -63,11 +63,11 @@ export class MatchService {
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+        const error = await response.json().catch(() => ({ message: 'Unknown error' })) as { message?: string };
         throw new Error(error.message || `HTTP ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as { match?: unknown };
       const match = this.mapApiMatchToMatch(data.match || data);
 
       this.currentMatch = match;

@@ -9,7 +9,7 @@ export class ActiveMatchPanel {
   private static readonly viewType = 'reporivals.activeMatch';
 
   private readonly panel: vscode.WebviewPanel;
-  private readonly extensionUri: vscode.Uri;
+  private readonly _extensionUri: vscode.Uri;
   private disposables: vscode.Disposable[] = [];
   private match: Match | null = null;
   private timeRemaining: number = 0;
@@ -18,7 +18,7 @@ export class ActiveMatchPanel {
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this.panel = panel;
-    this.extensionUri = extensionUri;
+    this._extensionUri = extensionUri;
 
     // Set up panel
     this.panel.webview.options = {
@@ -660,7 +660,7 @@ export class ActiveMatchPanel {
   /**
    * Get HTML for no match state
    */
-  private getNoMatchHtml(nonce: string): string {
+  private getNoMatchHtml(_nonce: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
