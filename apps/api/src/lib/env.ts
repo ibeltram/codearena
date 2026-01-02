@@ -42,6 +42,14 @@ const envSchema = z.object({
   // URLs
   API_URL: z.string().default('http://localhost:3001'),
   WEB_URL: z.string().default('http://localhost:3000'),
+
+  // OpenTelemetry
+  OTEL_ENABLED: z.string().optional().default('true'),
+  OTEL_SERVICE_NAME: z.string().optional().default('reporivals-api'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+  OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
+  OTEL_SAMPLE_RATE: z.string().optional(),
+  OTEL_DEBUG: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

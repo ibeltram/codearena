@@ -1,4 +1,10 @@
+// Load environment variables first
 import 'dotenv/config';
+
+// IMPORTANT: Initialize OpenTelemetry instrumentation BEFORE any other imports
+// This ensures all modules are properly instrumented (HTTP, PostgreSQL, Redis, etc.)
+import { initializeTracing, shutdownTracing } from './lib/instrumentation';
+const tracingSDK = initializeTracing();
 
 import sensible from '@fastify/sensible';
 import helmet from '@fastify/helmet';
@@ -70,6 +76,8 @@ async function start() {
         await closeQueues();
         await closeRedis();
         await closeDatabaseConnection();
+        // Shutdown OpenTelemetry tracing (flushes pending spans)
+        await shutdownTracing();
         logger.info('Server closed successfully');
         process.exit(0);
       } catch (err) {
