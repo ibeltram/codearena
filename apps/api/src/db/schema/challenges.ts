@@ -28,6 +28,7 @@ export const challenges = pgTable('challenges', {
   category: challengeCategoryEnum('category').notNull(),
   difficulty: challengeDifficultyEnum('difficulty').notNull(),
   isPublished: boolean('is_published').notNull().default(false),
+  defaultVersionId: uuid('default_version_id'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => users.id),

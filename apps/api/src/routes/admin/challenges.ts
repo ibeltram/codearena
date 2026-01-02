@@ -385,6 +385,71 @@ export async function adminChallengeRoutes(app: FastifyInstance) {
     };
   });
 
+  // POST /api/admin/challenges/:id/set-default-version - Set the default version for a challenge
+  app.post('/api/admin/challenges/:id/set-default-version', async (request: FastifyRequest) => {
+    const paramResult = challengeIdParamSchema.safeParse(request.params);
+
+    if (!paramResult.success) {
+      throw new ValidationError('Invalid challenge ID', {
+        issues: paramResult.error.issues,
+      });
+    }
+
+    const bodyResult = z.object({ versionId: z.string().uuid() }).safeParse(request.body);
+
+    if (!bodyResult.success) {
+      throw new ValidationError('Invalid version ID', {
+        issues: bodyResult.error.issues,
+      });
+    }
+
+    const { id } = paramResult.data;
+    const { versionId } = bodyResult.data;
+
+    // Check if challenge exists
+    const [challenge] = await db
+      .select({ id: challenges.id })
+      .from(challenges)
+      .where(eq(challenges.id, id));
+
+    if (!challenge) {
+      throw new NotFoundError('Challenge', id);
+    }
+
+    // Check if version exists and belongs to this challenge
+    const [version] = await db
+      .select()
+      .from(challengeVersions)
+      .where(eq(challengeVersions.id, versionId));
+
+    if (!version) {
+      throw new NotFoundError('Challenge Version', versionId);
+    }
+
+    if (version.challengeId !== id) {
+      throw new ValidationError('Version does not belong to this challenge');
+    }
+
+    // Version must be published to be set as default
+    if (!version.publishedAt) {
+      throw new ValidationError('Only published versions can be set as default');
+    }
+
+    const [updatedChallenge] = await db
+      .update(challenges)
+      .set({
+        defaultVersionId: versionId,
+        updatedAt: new Date(),
+      })
+      .where(eq(challenges.id, id))
+      .returning();
+
+    return {
+      message: 'Default version set successfully',
+      challenge: updatedChallenge,
+    };
+  });
+
   // DELETE /api/admin/challenges/:id - Delete a challenge (soft delete not implemented, hard delete for now)
   app.delete('/api/admin/challenges/:id', async (request: FastifyRequest) => {
     const paramResult = challengeIdParamSchema.safeParse(request.params);

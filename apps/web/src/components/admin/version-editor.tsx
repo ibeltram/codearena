@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, Clock, FileJson, Link as LinkIcon, Box } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -24,27 +24,41 @@ interface VersionEditorProps {
   existingVersions: ChallengeVersionFull[];
   onSave: (data: CreateVersionInput) => Promise<void>;
   isSaving?: boolean;
+  /** Optional initial data from cloning a version */
+  initialData?: ChallengeVersionFull;
 }
 
 export function VersionEditor({
   existingVersions,
   onSave,
   isSaving,
+  initialData,
 }: VersionEditorProps) {
-  // Initialize from latest version if exists
-  const latestVersion = existingVersions[0];
+  // Initialize from initialData (cloned) or latest version if exists
+  const sourceVersion = initialData || existingVersions[0];
 
   const [requirements, setRequirements] = useState<ChallengeRequirement[]>(
-    latestVersion?.requirementsJson || []
+    sourceVersion?.requirementsJson || []
   );
   const [rubric, setRubric] = useState<RubricCriterion[]>(
-    latestVersion?.rubricJson || []
+    sourceVersion?.rubricJson || []
   );
   const [constraints, setConstraints] = useState<ChallengeConstraints>(
-    latestVersion?.constraintsJson || {}
+    sourceVersion?.constraintsJson || {}
   );
-  const [templateRef, setTemplateRef] = useState(latestVersion?.templateRef || '');
-  const [judgeImageRef, setJudgeImageRef] = useState(latestVersion?.judgeImageRef || '');
+  const [templateRef, setTemplateRef] = useState(sourceVersion?.templateRef || '');
+  const [judgeImageRef, setJudgeImageRef] = useState(sourceVersion?.judgeImageRef || '');
+
+  // Update state when initialData changes (e.g., when cloning from compare view)
+  useEffect(() => {
+    if (initialData) {
+      setRequirements(initialData.requirementsJson || []);
+      setRubric(initialData.rubricJson || []);
+      setConstraints(initialData.constraintsJson || {});
+      setTemplateRef(initialData.templateRef || '');
+      setJudgeImageRef(initialData.judgeImageRef || '');
+    }
+  }, [initialData]);
 
   const [showConstraints, setShowConstraints] = useState(false);
 

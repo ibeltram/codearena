@@ -194,3 +194,23 @@ export function usePublishChallengeVersion() {
     },
   });
 }
+
+/**
+ * Set the default version for a challenge
+ */
+export function useSetDefaultVersion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ challengeId, versionId }: { challengeId: string; versionId: string }) =>
+      api.post<AdminChallengeResponse>(`/api/admin/challenges/${challengeId}/set-default-version`, { versionId }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: adminChallengeKeys.detail(variables.challengeId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: adminChallengeKeys.lists(),
+      });
+    },
+  });
+}

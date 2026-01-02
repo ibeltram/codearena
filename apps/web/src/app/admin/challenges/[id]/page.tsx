@@ -13,6 +13,9 @@ import {
   Settings,
   LayoutList,
   CheckCircle2,
+  GitCompare,
+  Copy,
+  Star,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -20,7 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChallengeForm, VersionEditor, ChallengePreview } from '@/components/admin';
+import { ChallengeForm, VersionEditor, VersionComparison, ChallengePreview } from '@/components/admin';
 import {
   useAdminChallenge,
   useUpdateChallenge,
@@ -29,6 +32,7 @@ import {
   useUnpublishChallenge,
   useCreateChallengeVersion,
   usePublishChallengeVersion,
+  useSetDefaultVersion,
 } from '@/hooks';
 import {
   categoryLabels,
@@ -37,6 +41,7 @@ import {
   difficultyColors,
   CreateVersionInput,
   UpdateChallengeInput,
+  ChallengeVersionFull,
 } from '@/types/challenge';
 
 export default function ChallengeDetailPage() {
@@ -54,6 +59,10 @@ export default function ChallengeDetailPage() {
   const unpublishMutation = useUnpublishChallenge();
   const createVersionMutation = useCreateChallengeVersion();
   const publishVersionMutation = usePublishChallengeVersion();
+  const setDefaultVersionMutation = useSetDefaultVersion();
+
+  // Clone version state
+  const [clonedVersionData, setClonedVersionData] = useState<ChallengeVersionFull | null>(null);
 
   const handleUpdateDetails = async (data: UpdateChallengeInput) => {
     try {
@@ -108,6 +117,21 @@ export default function ChallengeDetailPage() {
       await publishVersionMutation.mutateAsync({ challengeId, versionId });
     } catch (err) {
       console.error('Failed to publish version:', err);
+    }
+  };
+
+  const handleCloneVersion = (version: ChallengeVersionFull) => {
+    // Store the version data and switch to the editor tab
+    setClonedVersionData(version);
+    setActiveTab('version');
+  };
+
+  const handleSetDefaultVersion = async (versionId: string) => {
+    try {
+      await setDefaultVersionMutation.mutateAsync({ challengeId, versionId });
+    } catch (err) {
+      console.error('Failed to set default version:', err);
+      alert('Failed to set default version. Make sure the version is published.');
     }
   };
 
@@ -206,6 +230,10 @@ export default function ChallengeDetailPage() {
             <LayoutList className="h-4 w-4" />
             Requirements & Rubric
           </TabsTrigger>
+          <TabsTrigger value="compare" className="flex items-center gap-2" disabled={(challenge.versions?.length || 0) < 2}>
+            <GitCompare className="h-4 w-4" />
+            Compare
+          </TabsTrigger>
           <TabsTrigger value="details" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Details
@@ -218,10 +246,34 @@ export default function ChallengeDetailPage() {
 
         {/* Version Editor Tab */}
         <TabsContent value="version" className="mt-6">
+          {/* Cloned version notice */}
+          {clonedVersionData && (
+            <Card className="mb-6 border-blue-500/50 bg-blue-500/5">
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-blue-500">
+                    <Copy className="h-4 w-4" />
+                    <span className="text-sm font-medium">
+                      Editing cloned data from v{clonedVersionData.versionNumber}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setClonedVersionData(null)}
+                  >
+                    Clear Clone
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <VersionEditor
             existingVersions={challenge.versions || []}
             onSave={handleSaveVersion}
             isSaving={createVersionMutation.isPending}
+            initialData={clonedVersionData || undefined}
           />
 
           {/* Publish latest version button */}
@@ -242,6 +294,27 @@ export default function ChallengeDetailPage() {
                 Publish Version
               </Button>
             </div>
+          )}
+        </TabsContent>
+
+        {/* Compare Tab */}
+        <TabsContent value="compare" className="mt-6">
+          {(challenge.versions?.length || 0) >= 2 ? (
+            <VersionComparison
+              versions={challenge.versions || []}
+              onCloneVersion={handleCloneVersion}
+              onSetDefault={handleSetDefaultVersion}
+              defaultVersionId={challenge.defaultVersionId || undefined}
+            />
+          ) : (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <GitCompare className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
+                <p className="text-muted-foreground">
+                  Create at least 2 versions to enable comparison view.
+                </p>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 

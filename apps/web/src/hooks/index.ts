@@ -87,6 +87,7 @@ export {
   useUnpublishChallenge,
   useCreateChallengeVersion,
   usePublishChallengeVersion,
+  useSetDefaultVersion,
   adminChallengeKeys,
 } from './use-admin-challenges';
 export {

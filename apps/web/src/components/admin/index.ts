@@ -4,6 +4,7 @@ export { RequirementsBuilder } from './requirements-builder';
 export { RubricEditor } from './rubric-editor';
 export { TemplateManager } from './template-manager';
 export { VersionEditor } from './version-editor';
+export { VersionComparison } from './version-comparison';
 export { ChallengePreview } from './challenge-preview';
 export { DisputeTable } from './dispute-table';
 export { PrizeClaimsTable } from './prize-claims-table';

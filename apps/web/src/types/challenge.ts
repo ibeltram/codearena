@@ -165,6 +165,7 @@ export interface ChallengeVersionFull {
 export interface AdminChallenge extends Challenge {
   versions: ChallengeVersionFull[];
   createdBy: string;
+  defaultVersionId: string | null;
 }
 
 /**
