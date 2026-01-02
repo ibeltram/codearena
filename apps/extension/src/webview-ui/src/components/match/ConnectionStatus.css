@@ -65,3 +65,19 @@
 .connection-status--reconnecting .connection-status__label {
   color: var(--foreground-muted);
 }
+
+/* Light theme adjustments - darker dot colors for better visibility */
+body.vscode-light .connection-status--connected .connection-status__dot {
+  background-color: #16a34a;
+  box-shadow: 0 0 4px rgba(22, 163, 74, 0.4);
+}
+
+body.vscode-light .connection-status--disconnected .connection-status__dot {
+  background-color: #dc2626;
+  box-shadow: 0 0 4px rgba(220, 38, 38, 0.4);
+}
+
+body.vscode-light .connection-status--reconnecting .connection-status__dot {
+  background-color: #ca8a04;
+  box-shadow: 0 0 4px rgba(202, 138, 4, 0.4);
+}

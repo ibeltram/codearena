@@ -90,3 +90,19 @@
 .stats-overview--empty {
   display: none;
 }
+
+/* Light theme adjustments - darker colors for better contrast */
+body.vscode-light .stats-overview__stat--win .stats-overview__stat-value,
+body.vscode-light .stats-overview__stat--win .stats-overview__stat-label {
+  color: #16a34a;
+}
+
+body.vscode-light .stats-overview__stat--loss .stats-overview__stat-value,
+body.vscode-light .stats-overview__stat--loss .stats-overview__stat-label {
+  color: #dc2626;
+}
+
+body.vscode-light .stats-overview__stat--draw .stats-overview__stat-value,
+body.vscode-light .stats-overview__stat--draw .stats-overview__stat-label {
+  color: #ca8a04;
+}

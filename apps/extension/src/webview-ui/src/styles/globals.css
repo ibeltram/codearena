@@ -13,6 +13,9 @@
   --input-border: var(--vscode-input-border);
   --focus-border: var(--vscode-focusBorder);
 
+  /* Interactive states */
+  --background-hover: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+
   /* Button colors */
   --primary: var(--vscode-button-background);
   --primary-foreground: var(--vscode-button-foreground);
