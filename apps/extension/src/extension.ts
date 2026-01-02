@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ChallengesProvider, MatchProvider, HistoryProvider } from './providers';
+import { ChallengesProvider, MatchProvider, HistoryProvider, SidebarProvider } from './providers';
 import { StatusBarService, AuthService, MatchService, SubmissionService, SubmissionSummary } from './services';
 import { ActiveMatchPanel, SubmissionPanel } from './panels';
 import { Challenge, MatchHistoryItem, ExtensionConfig } from './types';
@@ -8,6 +8,7 @@ import { Challenge, MatchHistoryItem, ExtensionConfig } from './types';
 let challengesProvider: ChallengesProvider;
 let matchProvider: MatchProvider;
 let historyProvider: HistoryProvider;
+let sidebarProvider: SidebarProvider;
 let statusBarService: StatusBarService;
 let authService: AuthService;
 let matchService: MatchService;
@@ -732,6 +733,9 @@ export function activate(context: vscode.ExtensionContext) {
       ActiveMatchPanel.currentPanel.setMatch(match);
     }
 
+    // Update the sidebar webview
+    sidebarProvider?.updateMatch(match);
+
     // Update context values
     vscode.commands.executeCommand('setContext', 'reporivals.hasActiveMatch', !!match);
     vscode.commands.executeCommand(
@@ -753,6 +757,9 @@ export function activate(context: vscode.ExtensionContext) {
     if (ActiveMatchPanel.currentPanel) {
       ActiveMatchPanel.currentPanel.setTimeRemaining(remaining);
     }
+
+    // Update the sidebar webview
+    sidebarProvider?.updateTimer(remaining);
   });
 
   // Listen for connection state changes
@@ -761,12 +768,15 @@ export function activate(context: vscode.ExtensionContext) {
       ActiveMatchPanel.currentPanel.setConnectionState(state);
     }
 
+    // Update the sidebar webview
+    sidebarProvider?.updateConnectionState(state);
+
     if (state === 'reconnecting') {
       vscode.window.setStatusBarMessage('$(sync~spin) RepoRivals: Reconnecting...', 3000);
     }
   });
 
-  // Register tree data providers
+  // Register tree data providers (kept during migration phase)
   const challengesView = vscode.window.createTreeView('reporivals-challenges', {
     treeDataProvider: challengesProvider,
     showCollapseAll: true,
@@ -781,6 +791,16 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(challengesView, matchView, historyView);
+
+  // Register SidebarProvider for the React webview sidebar
+  sidebarProvider = new SidebarProvider(context.extensionUri, context);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      SidebarProvider.viewType,
+      sidebarProvider,
+      { webviewOptions: { retainContextWhenHidden: false } }
+    )
+  );
 
   // Register commands
   registerCommands(context);
