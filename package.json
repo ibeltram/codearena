@@ -21,7 +21,13 @@
     "db:studio": "pnpm --filter @reporivals/api db:studio",
     "clean": "turbo clean",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:load": "k6 run load-tests/scripts/api-general.js",
+    "test:load:health": "k6 run load-tests/scripts/health.js",
+    "test:load:matches": "k6 run load-tests/scripts/matches.js",
+    "test:load:submissions": "k6 run load-tests/scripts/submissions.js",
+    "test:load:smoke": "k6 run --vus 5 --duration 30s load-tests/scripts/health.js",
+    "test:load:all": "npm run test:load:health && npm run test:load:matches && npm run test:load:submissions && npm run test:load"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
