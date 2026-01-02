@@ -1,5 +1,6 @@
 <project_specification version="1.0">
-  <project_name>RepoRivals Extension - React Webview Sidebar</project_name>
+  <project_name>CodeArena</project_name>
+  <feature_name>Extension React Webview Sidebar</feature_name>
   <status>Feature Specification</status>
 
   <overview>
