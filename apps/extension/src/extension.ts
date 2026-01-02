@@ -1,17 +1,10 @@
 import * as vscode from 'vscode';
 import { SidebarProvider } from './providers';
-// Legacy providers - imported directly until fully migrated (see QUI-290)
-import { ChallengesProvider } from './providers/challenges-provider';
-import { MatchProvider } from './providers/match-provider';
-import { HistoryProvider } from './providers/history-provider';
 import { StatusBarService, AuthService, MatchService, SubmissionService, SubmissionSummary } from './services';
 import { ActiveMatchPanel, SubmissionPanel } from './panels';
-import { Challenge, MatchHistoryItem, ExtensionConfig } from './types';
+import { Challenge, MatchHistoryItem, ExtensionConfig, ChallengeCategory } from './types';
 
 // Global providers and services
-let challengesProvider: ChallengesProvider;
-let matchProvider: MatchProvider;
-let historyProvider: HistoryProvider;
 let sidebarProvider: SidebarProvider;
 let statusBarService: StatusBarService;
 let authService: AuthService;
@@ -22,17 +15,18 @@ let submissionService: SubmissionService;
 let isAuthenticated = false;
 let currentUserId: string | null = null;
 
+// Local state for category filtering (was in ChallengesProvider)
+let categoryFilter: ChallengeCategory | null = null;
+
 /**
  * Fetch match history from API
  */
 async function fetchMatchHistory(): Promise<void> {
   if (!currentUserId) {
-    historyProvider.setMatches([]);
     sidebarProvider?.updateHistory([], false, null);
     return;
   }
 
-  historyProvider.setLoading(true);
   // Update sidebar webview with loading state
   sidebarProvider?.updateHistory([], true, null);
 
@@ -86,23 +80,18 @@ async function fetchMatchHistory(): Promise<void> {
         completedAt: m.endAt ?? undefined,
       }));
 
-      historyProvider.setMatches(matches);
       // Update sidebar webview with history data
       sidebarProvider?.updateHistory(matches, false, null);
     } else {
       const errorMsg = 'Failed to load match history';
-      historyProvider.setError(errorMsg);
       // Update sidebar webview with error state
       sidebarProvider?.updateHistory([], false, errorMsg);
     }
   } catch (error) {
     console.error('Failed to fetch match history:', error);
     const errorMsg = 'Network error - check connection';
-    historyProvider.setError(errorMsg);
     // Update sidebar webview with error state
     sidebarProvider?.updateHistory([], false, errorMsg);
-  } finally {
-    historyProvider.setLoading(false);
   }
 }
 
@@ -148,7 +137,6 @@ function registerCommands(context: vscode.ExtensionContext): void {
       const tokens = await authService.getStoredTokens();
       if (tokens) {
         currentUserId = tokens.userId;
-        matchProvider.setCurrentUserId(currentUserId);
       }
 
       // Refresh challenges and match history
@@ -177,11 +165,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
       isAuthenticated = false;
       currentUserId = null;
 
-      // Clear providers
-      challengesProvider.setChallenges([]);
-      matchProvider.setMatch(null);
-      matchProvider.setCurrentUserId(null);
-      historyProvider.setMatches([]);
+      // Clear sidebar state
+      sidebarProvider?.updateChallenges([], false, null);
+      sidebarProvider?.updateMatch(null);
+      sidebarProvider?.updateHistory([], false, null);
       statusBarService.hide();
 
       vscode.window.showInformationMessage('RepoRivals: You have been signed out.');
@@ -321,7 +308,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Submit
   const submit = vscode.commands.registerCommand('reporivals.submit', async () => {
-    const match = matchProvider.getMatch();
+    const match = matchService.getCurrentMatch();
     if (!match || match.status !== 'in_progress') {
       vscode.window.showWarningMessage('RepoRivals: No active match to submit to.');
       return;
@@ -435,7 +422,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Lock Submission
   const lockSubmission = vscode.commands.registerCommand('reporivals.lockSubmission', async () => {
-    const match = matchProvider.getMatch();
+    const match = matchService.getCurrentMatch();
 
     // Check if there's an active match
     if (!match) {
@@ -514,7 +501,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Open Match in Web
   const openMatchInWeb = vscode.commands.registerCommand('reporivals.openMatchInWeb', () => {
-    const match = matchProvider.getMatch();
+    const match = matchService.getCurrentMatch();
     if (!match) {
       vscode.window.showWarningMessage('RepoRivals: No active match.');
       return;
@@ -542,7 +529,6 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
   // Refresh Challenges
   const refreshChallenges = vscode.commands.registerCommand('reporivals.refreshChallenges', async () => {
-    challengesProvider.setLoading(true);
     // Update sidebar webview with loading state
     sidebarProvider?.updateChallenges([], true, null);
 
@@ -571,45 +557,40 @@ function registerCommands(context: vscode.ExtensionContext): void {
           hasTemplate: c.hasTemplate || c.has_template || false,
           isPublished: c.isPublished ?? c.is_published ?? true,
         }));
-        challengesProvider.setChallenges(challenges);
         // Update sidebar webview with challenges data
         sidebarProvider?.updateChallenges(challenges, false, null);
       } else {
         const errorMsg = 'Failed to load challenges';
-        challengesProvider.setError(errorMsg);
         // Update sidebar webview with error state
         sidebarProvider?.updateChallenges([], false, errorMsg);
       }
     } catch (error) {
       console.error('Failed to fetch challenges:', error);
       const errorMsg = 'Network error - check connection';
-      challengesProvider.setError(errorMsg);
       // Update sidebar webview with error state
       sidebarProvider?.updateChallenges([], false, errorMsg);
-    } finally {
-      challengesProvider.setLoading(false);
     }
   });
 
   // Filter Challenges by Category
   const filterChallenges = vscode.commands.registerCommand('reporivals.filterChallenges', async () => {
-    const currentFilter = challengesProvider.getCategoryFilter();
     const categories = [
-      { label: '$(list-flat) All Categories', category: null, picked: currentFilter === null },
-      { label: '$(browser) Frontend', category: 'frontend' as const, picked: currentFilter === 'frontend' },
-      { label: '$(server) Backend', category: 'backend' as const, picked: currentFilter === 'backend' },
-      { label: '$(layers) Full Stack', category: 'fullstack' as const, picked: currentFilter === 'fullstack' },
-      { label: '$(symbol-method) Algorithm', category: 'algorithm' as const, picked: currentFilter === 'algorithm' },
-      { label: '$(cloud) DevOps', category: 'devops' as const, picked: currentFilter === 'devops' },
+      { label: '$(list-flat) All Categories', category: null, picked: categoryFilter === null },
+      { label: '$(browser) Frontend', category: 'frontend' as const, picked: categoryFilter === 'frontend' },
+      { label: '$(server) Backend', category: 'backend' as const, picked: categoryFilter === 'backend' },
+      { label: '$(layers) Full Stack', category: 'fullstack' as const, picked: categoryFilter === 'fullstack' },
+      { label: '$(symbol-method) Algorithm', category: 'algorithm' as const, picked: categoryFilter === 'algorithm' },
+      { label: '$(cloud) DevOps', category: 'devops' as const, picked: categoryFilter === 'devops' },
     ];
 
     const selection = await vscode.window.showQuickPick(categories, {
       title: 'Filter Challenges by Category',
-      placeHolder: currentFilter ? `Currently: ${currentFilter}` : 'Select a category to filter',
+      placeHolder: categoryFilter ? `Currently: ${categoryFilter}` : 'Select a category to filter',
     });
 
     if (selection !== undefined) {
-      challengesProvider.setCategoryFilter(selection.category);
+      categoryFilter = selection.category;
+      // Note: Filtering is now handled in the webview React app
     }
   });
 
@@ -624,9 +605,9 @@ function registerCommands(context: vscode.ExtensionContext): void {
     }
   );
 
-  // Toggle Challenge Grouping
+  // Toggle Challenge Grouping (no-op now - grouping handled in webview)
   const toggleGrouping = vscode.commands.registerCommand('reporivals.toggleGrouping', () => {
-    challengesProvider.toggleGroupByCategory();
+    // Grouping is now handled in the webview React app
   });
 
   // Refresh Match History
@@ -685,7 +666,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         await vscode.commands.executeCommand('setContext', 'reporivals.hasActiveMatch', false);
         await vscode.commands.executeCommand('setContext', 'reporivals.hasSubmitted', false);
         statusBarService.hide();
-        matchProvider.setMatch(null);
+        sidebarProvider?.updateMatch(null);
         vscode.window.showInformationMessage('RepoRivals: Match forfeited.');
       } else {
         vscode.window.showErrorMessage('RepoRivals: Failed to forfeit match.');
@@ -732,10 +713,7 @@ async function setupContext(): Promise<void> {
 export function activate(context: vscode.ExtensionContext) {
   console.info('RepoRivals extension is activating...');
 
-  // Initialize providers and services
-  challengesProvider = new ChallengesProvider();
-  matchProvider = new MatchProvider();
-  historyProvider = new HistoryProvider();
+  // Initialize services
   statusBarService = new StatusBarService();
   authService = new AuthService(context);
 
@@ -753,7 +731,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Listen for match updates from the service
   matchService.onMatchUpdate((match) => {
-    matchProvider.setMatch(match);
     statusBarService.setMatch(match);
 
     // Update the webview panel if it exists
@@ -780,8 +757,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Listen for timer ticks
   matchService.onTimerTick((remaining) => {
-    matchProvider.setTimeRemaining(remaining);
-
     if (ActiveMatchPanel.currentPanel) {
       ActiveMatchPanel.currentPanel.setTimeRemaining(remaining);
     }
@@ -812,18 +787,15 @@ export function activate(context: vscode.ExtensionContext) {
     // Update the sidebar webview with auth state
     sidebarProvider?.updateAuth(authenticated, user);
 
-    // Update match provider with current user ID
-    matchProvider.setCurrentUserId(currentUserId);
-
     // Refresh data when user signs in
     if (authenticated && user) {
       vscode.commands.executeCommand('reporivals.refreshChallenges');
       fetchMatchHistory();
     } else {
-      // Clear data when signed out
-      challengesProvider.setChallenges([]);
-      matchProvider.setMatch(null);
-      historyProvider.setMatches([]);
+      // Clear sidebar data when signed out
+      sidebarProvider?.updateChallenges([], false, null);
+      sidebarProvider?.updateMatch(null);
+      sidebarProvider?.updateHistory([], false, null);
       statusBarService.hide();
     }
   });
@@ -861,7 +833,6 @@ export function activate(context: vscode.ExtensionContext) {
       authService.getStoredTokens().then((tokens) => {
         if (tokens) {
           currentUserId = tokens.userId;
-          matchProvider.setCurrentUserId(currentUserId);
           // Refresh challenges and match history on successful auto-login
           vscode.commands.executeCommand('reporivals.refreshChallenges');
           fetchMatchHistory();
@@ -878,7 +849,7 @@ export function activate(context: vscode.ExtensionContext) {
         const config = getConfig();
         if (!config.showTimerInStatusBar) {
           statusBarService.hide();
-        } else if (matchProvider.getMatch()) {
+        } else if (matchService.getCurrentMatch()) {
           statusBarService.show();
         }
       }
