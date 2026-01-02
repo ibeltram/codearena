@@ -1,0 +1,221 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to deploy (e.g., v1.0.0)'
+        required: true
+        type: string
+      skip_approval:
+        description: 'Skip manual approval (for hotfixes only)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version tag exists
+        id: validate
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          # Check if tag exists
+          if ! git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Error: Tag $VERSION does not exist"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Validated version: $VERSION"
+
+  approval:
+    name: Production Approval
+    needs: validate
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_approval }}
+    environment:
+      name: production-approval
+    steps:
+      - name: Awaiting manual approval
+        run: |
+          echo "Deployment of ${{ needs.validate.outputs.version }} to production has been approved"
+
+  build-production:
+    name: Build Production Images
+    needs: [validate, approval]
+    if: always() && needs.validate.result == 'success' && (needs.approval.result == 'success' || needs.approval.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      api-image: ${{ steps.meta-api.outputs.tags }}
+      web-image: ${{ steps.meta-web.outputs.tags }}
+      api-digest: ${{ steps.build-api.outputs.digest }}
+      web-digest: ${{ steps.build-web.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Extract metadata for API
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest
+
+      - name: Extract metadata for Web
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest
+
+      - name: Build and push API image
+        id: build-api
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/api/Dockerfile
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+
+      - name: Build and push Web image
+        id: build-web
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+
+      - name: Sign API image with cosign
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api@${{ steps.build-api.outputs.digest }}
+
+      - name: Sign Web image with cosign
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web@${{ steps.build-web.outputs.digest }}
+
+  deploy-canary:
+    name: Deploy Canary (10%)
+    needs: build-production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://reporivals.dev
+    steps:
+      - name: Deploy canary release
+        run: |
+          echo "Deploying canary with 10% traffic..."
+          echo "API Image: ${{ needs.build-production.outputs.api-image }}"
+          echo "Web Image: ${{ needs.build-production.outputs.web-image }}"
+          # Add canary deployment commands here
+
+      - name: Monitor canary metrics
+        run: |
+          echo "Monitoring canary for 5 minutes..."
+          # Add monitoring/metrics check here
+          sleep 10  # Placeholder
+
+      - name: Canary health check
+        run: |
+          echo "Checking canary health..."
+          # Add health check commands here
+
+  deploy-full:
+    name: Full Production Rollout
+    needs: [build-production, deploy-canary]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Full production rollout
+        run: |
+          echo "Rolling out to 100% of production traffic..."
+          # Add full rollout commands here
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying production deployment..."
+          # Add verification commands here
+
+      - name: Create deployment record
+        run: |
+          echo "Recording deployment in audit log..."
+          echo "Version: ${{ needs.build-production.outputs.api-image }}"
+          echo "Deployed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Deployed by: ${{ github.actor }}"
+
+  notify:
+    name: Notify Deployment
+    needs: [validate, deploy-full]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify on success
+        if: needs.deploy-full.result == 'success'
+        run: |
+          echo "Production deployment of ${{ needs.validate.outputs.version }} successful!"
+          # Add Slack/Discord notification here
+
+      - name: Notify on failure
+        if: needs.deploy-full.result == 'failure'
+        run: |
+          echo "Production deployment of ${{ needs.validate.outputs.version }} failed!"
+          # Add failure notification here

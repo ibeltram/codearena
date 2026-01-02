@@ -1,0 +1,181 @@
+name: Release VS Code Extension
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (leave empty for current package.json version)'
+        required: false
+        type: string
+      publish:
+        description: 'Publish to VS Code Marketplace'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-extension
+  cancel-in-progress: false
+
+jobs:
+  build-extension:
+    name: Build Extension
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      vsix-name: ${{ steps.package.outputs.vsix-name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm build --filter=@reporivals/shared
+
+      - name: Build extension
+        run: pnpm build --filter=reporivals
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=$(node -p "require('./apps/extension/package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extension version: $VERSION"
+
+      - name: Package extension
+        id: package
+        working-directory: apps/extension
+        run: |
+          npx @vscode/vsce package --no-dependencies
+          VSIX_NAME="reporivals-${{ steps.version.outputs.version }}.vsix"
+          echo "vsix-name=$VSIX_NAME" >> $GITHUB_OUTPUT
+          ls -la *.vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-package
+          path: apps/extension/*.vsix
+          retention-days: 30
+
+  test-extension:
+    name: Test Extension Package
+    needs: build-extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-package
+          path: ./extension
+
+      - name: Validate VSIX structure
+        run: |
+          cd extension
+          unzip -t *.vsix
+          echo "VSIX package structure is valid"
+
+      - name: Check extension manifest
+        run: |
+          cd extension
+          unzip -p *.vsix extension/package.json | jq '.name, .version, .publisher'
+
+  publish-marketplace:
+    name: Publish to VS Code Marketplace
+    needs: [build-extension, test-extension]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || inputs.publish == true
+    environment:
+      name: vscode-marketplace
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-package
+          path: ./extension
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Publish to marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          cd extension
+          vsce publish --packagePath *.vsix
+          echo "Published to VS Code Marketplace!"
+
+  publish-openvsx:
+    name: Publish to Open VSX Registry
+    needs: [build-extension, test-extension]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || inputs.publish == true
+    environment:
+      name: openvsx
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-package
+          path: ./extension
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install ovsx
+        run: npm install -g ovsx
+
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          cd extension
+          ovsx publish *.vsix -p $OVSX_PAT
+          echo "Published to Open VSX Registry!"
+
+  attach-to-release:
+    name: Attach VSIX to Release
+    needs: [build-extension, test-extension]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-package
+          path: ./extension
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: extension/*.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
