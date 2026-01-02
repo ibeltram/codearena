@@ -1,0 +1,54 @@
+/* EmptyState Component Styles */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  flex: 1;
+}
+
+.empty-state__icon {
+  font-size: 2.5em;
+  margin-bottom: 12px;
+  opacity: 0.7;
+}
+
+.empty-state__title {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0 0 6px 0;
+}
+
+.empty-state__description {
+  font-size: 0.85em;
+  color: var(--foreground-muted);
+  margin: 0 0 16px 0;
+  max-width: 220px;
+  line-height: 1.4;
+}
+
+.empty-state__action {
+  padding: 8px 20px;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.empty-state__action:hover {
+  background-color: var(--primary-hover);
+}
+
+.empty-state__action:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
+}
