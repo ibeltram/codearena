@@ -53,6 +53,29 @@ const envSchema = z.object({
 
   // Feature Flags (LaunchDarkly)
   LAUNCHDARKLY_SDK_KEY: z.string().optional(),
+
+  // Secrets Management
+  SECRETS_PROVIDER: z.enum(['local', 'vault', 'aws']).default('local'),
+
+  // HashiCorp Vault
+  VAULT_ADDR: z.string().optional(),
+  VAULT_TOKEN: z.string().optional(),
+  VAULT_ROLE_ID: z.string().optional(),
+  VAULT_SECRET_ID: z.string().optional(),
+  VAULT_NAMESPACE: z.string().optional(),
+  VAULT_MOUNT_PATH: z.string().optional(),
+
+  // AWS Secrets Manager
+  AWS_REGION: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  AWS_SECRET_PREFIX: z.string().optional(),
+
+  // Secrets Cache
+  SECRETS_CACHE_ENABLED: z.string().optional().default('true'),
+  SECRETS_CACHE_TTL: z.string().optional().default('300'),
+  SECRETS_AUDIT_ENABLED: z.string().optional().default('true'),
+  SECRETS_AUDIT_LEVEL: z.enum(['info', 'warn', 'debug']).optional().default('info'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -70,3 +93,17 @@ function parseEnv(): Env {
 }
 
 export const env = parseEnv();
+
+/**
+ * Check if secrets management is using external provider
+ */
+export function isUsingExternalSecrets(): boolean {
+  return env.SECRETS_PROVIDER !== 'local';
+}
+
+/**
+ * Get the configured secrets provider
+ */
+export function getSecretsProvider(): 'local' | 'vault' | 'aws' {
+  return env.SECRETS_PROVIDER;
+}
