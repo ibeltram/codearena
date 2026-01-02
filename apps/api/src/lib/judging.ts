@@ -57,6 +57,17 @@ import {
   BUCKETS,
 } from './storage';
 
+import {
+  evaluateWithAIJudge,
+  extractCodeContext,
+  AIJudgeConfig,
+  AIJudgeResult,
+  AIJudgeRequirement,
+  CriterionResult,
+  AIJudgeRequirementResult,
+  DEFAULT_AI_JUDGE_CONFIG,
+} from './ai-judge';
+
 // Rubric types
 export interface RubricRequirement {
   id: string;
@@ -64,6 +75,10 @@ export interface RubricRequirement {
   weight: number;           // 0-100, must sum to 100
   type: 'automated' | 'ai_judge';
   checks: RubricCheck[];
+  // AI Judge specific fields (for type: 'ai_judge')
+  description?: string;
+  criteria?: string[];
+  evidenceTypes?: string[];
 }
 
 export interface RubricCheck {
@@ -81,6 +96,8 @@ export interface Rubric {
   requirements: RubricRequirement[];
   buildCommand?: ExecutionCommand;
   installCommand?: ExecutionCommand;
+  // AI Judge configuration
+  aiJudge?: AIJudgeConfig;
 }
 
 // Check result
@@ -115,6 +132,8 @@ export interface JudgingResult {
   buildSuccess: boolean;
   logs: string[];
   durationMs: number;
+  // AI Judge results
+  aiJudgeResult?: AIJudgeResult;
 }
 
 /**
@@ -234,6 +253,45 @@ async function runRequirement(
 }
 
 /**
+ * Read all files from artifact directory into a Map
+ */
+async function readArtifactFiles(artifactPath: string): Promise<Map<string, Buffer>> {
+  const files = new Map<string, Buffer>();
+
+  async function readDir(dir: string, prefix: string = ''): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+      if (entry.isDirectory()) {
+        // Skip common non-source directories
+        if (['node_modules', '.git', 'dist', 'build', '.next', 'coverage'].includes(entry.name)) {
+          continue;
+        }
+        await readDir(fullPath, relativePath);
+      } else if (entry.isFile()) {
+        try {
+          // Only read text-like files up to 1MB
+          const stats = await fs.stat(fullPath);
+          if (stats.size < 1024 * 1024) {
+            const content = await fs.readFile(fullPath);
+            files.set(relativePath, content);
+          }
+        } catch (error) {
+          // Skip files that can't be read
+          console.warn(`Failed to read file ${fullPath}:`, error);
+        }
+      }
+    }
+  }
+
+  await readDir(artifactPath);
+  return files;
+}
+
+/**
  * Judge a submission against a rubric
  */
 async function judgeSubmission(
@@ -307,6 +365,90 @@ async function judgeSubmission(
       }
     }
 
+    // Run AI judge for requirements with type: 'ai_judge'
+    let aiJudgeResult: AIJudgeResult | undefined;
+    const aiJudgeRequirements = rubric.requirements.filter(r => r.type === 'ai_judge');
+
+    if (aiJudgeRequirements.length > 0 && rubric.aiJudge?.enabled) {
+      logs.push('[INFO] Starting AI judge evaluation...');
+
+      try {
+        // Read artifact files for AI evaluation
+        const artifactFiles = await readArtifactFiles(artifactPath);
+        const codeContext = extractCodeContext(artifactFiles);
+
+        // Convert requirements to AI judge format
+        const aiRequirements: AIJudgeRequirement[] = aiJudgeRequirements.map(r => ({
+          id: r.id,
+          title: r.name,
+          description: r.description || r.name,
+          weight: r.weight,
+          criteria: r.criteria || [],
+          evidenceTypes: r.evidenceTypes || [],
+        }));
+
+        aiJudgeResult = await evaluateWithAIJudge(
+          rubric.aiJudge || DEFAULT_AI_JUDGE_CONFIG,
+          aiRequirements,
+          codeContext
+        );
+
+        logs.push(`[INFO] AI judge evaluation complete: ${aiJudgeResult.totalScore}/${aiJudgeResult.maxScore}`);
+        logs.push(`[INFO] AI judge summary: ${aiJudgeResult.summary}`);
+
+        // Add AI judge results to requirement results
+        for (const aiReq of aiJudgeResult.requirements) {
+          requirementResults.push({
+            requirementId: aiReq.requirementId,
+            name: aiReq.title,
+            checks: aiReq.criteria.map((c: CriterionResult) => ({
+              checkId: c.criterion,
+              name: c.criterion,
+              passed: c.met,
+              exitCode: c.met ? 0 : 1,
+              stdout: c.reasoning,
+              stderr: '',
+              durationMs: 0,
+              points: c.met ? c.score : 0,
+              maxPoints: 100,
+            })),
+            score: aiReq.score,
+            maxScore: 100,
+            weight: aiReq.weight,
+          });
+        }
+      } catch (error) {
+        logs.push(`[ERROR] AI judge evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.error('[Judging] AI judge error:', error);
+
+        // Give 0 score for failed AI judge requirements
+        for (const req of aiJudgeRequirements) {
+          requirementResults.push({
+            requirementId: req.id,
+            name: req.name,
+            checks: [],
+            score: 0,
+            maxScore: 100,
+            weight: req.weight,
+          });
+        }
+      }
+    } else if (aiJudgeRequirements.length > 0) {
+      logs.push('[INFO] AI judge requirements found but AI judge not enabled - skipping');
+
+      // Give 0 score for requirements that need AI judge but it's not enabled
+      for (const req of aiJudgeRequirements) {
+        requirementResults.push({
+          requirementId: req.id,
+          name: req.name,
+          checks: [],
+          score: 0,
+          maxScore: 100,
+          weight: req.weight,
+        });
+      }
+    }
+
     // Calculate scores
     let totalScore = 0;
     let maxScore = 0;
@@ -331,6 +473,7 @@ async function judgeSubmission(
       buildSuccess,
       logs,
       durationMs: Date.now() - startTime,
+      aiJudgeResult,
     };
   } finally {
     await destroySandbox(session);
@@ -456,20 +599,45 @@ export async function processJudgingJob(
         buildSuccess: result.buildSuccess,
       },
       automatedResultsJson: {
-        requirements: result.requirements.map((r) => ({
+        requirements: result.requirements
+          .filter((r: RequirementResult) => !result.aiJudgeResult?.requirements.some((ai: AIJudgeRequirementResult) => ai.requirementId === r.requirementId))
+          .map((r: RequirementResult) => ({
+            id: r.requirementId,
+            name: r.name,
+            score: r.score,
+            maxScore: r.maxScore,
+            checks: r.checks.map((c) => ({
+              id: c.checkId,
+              name: c.name,
+              passed: c.passed,
+              points: c.points,
+              maxPoints: c.maxPoints,
+            })),
+          })),
+      },
+      // Store AI judge results if available
+      aiJudgeResultsJson: result.aiJudgeResult ? {
+        requirements: result.aiJudgeResult.requirements.map((r: AIJudgeRequirementResult) => ({
           id: r.requirementId,
-          name: r.name,
+          title: r.title,
           score: r.score,
-          maxScore: r.maxScore,
-          checks: r.checks.map((c) => ({
-            id: c.checkId,
-            name: c.name,
-            passed: c.passed,
-            points: c.points,
-            maxPoints: c.maxPoints,
+          weightedScore: r.weightedScore,
+          weight: r.weight,
+          overallReasoning: r.overallReasoning,
+          confidence: r.confidence,
+          criteria: r.criteria.map((c: CriterionResult) => ({
+            criterion: c.criterion,
+            met: c.met,
+            score: c.score,
+            reasoning: c.reasoning,
+            evidence: c.evidence,
           })),
         })),
-      },
+        totalScore: result.aiJudgeResult.totalScore,
+        maxScore: result.aiJudgeResult.maxScore,
+        summary: result.aiJudgeResult.summary,
+        metadata: result.aiJudgeResult.metadata,
+      } : null,
     });
 
     // Update judgement run as successful
