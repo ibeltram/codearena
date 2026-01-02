@@ -5,7 +5,7 @@
 
 // API configuration
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 // App configuration
 export const APP_URL =

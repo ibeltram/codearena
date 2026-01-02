@@ -159,7 +159,7 @@ export async function exportTransactionHistory(
     headers['Authorization'] = `Bearer ${authToken}`;
   }
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3010';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
   const response = await fetch(`${API_URL}${endpoint}`, {
     method: 'GET',
     headers,

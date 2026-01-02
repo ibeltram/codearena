@@ -99,7 +99,7 @@ export interface UseMatchEventsReturn {
   reconnectAttempts: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3006';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 /**
  * Hook for subscribing to real-time match events via SSE

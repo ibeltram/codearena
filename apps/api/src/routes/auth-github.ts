@@ -337,7 +337,8 @@ export async function authGitHubRoutes(app: FastifyInstance) {
         token_type: 'Bearer',
       });
 
-      return reply.redirect(`${stateData.redirectUrl}?auth=success&${params.toString()}`);
+      const separator = stateData.redirectUrl.includes('?') ? '&' : '?';
+      return reply.redirect(`${stateData.redirectUrl}${separator}auth=success&${params.toString()}`);
     } catch (error) {
       console.error('GitHub OAuth error:', error);
       const message = error instanceof Error ? error.message : 'OAuth failed';

@@ -31,7 +31,7 @@ const defaultContext: FeatureFlagsContextType = {
 const FeatureFlagsContext = createContext<FeatureFlagsContextType>(defaultContext);
 
 // API URL from environment or default
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3012';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 // Provider props
 interface FeatureFlagsProviderProps {
