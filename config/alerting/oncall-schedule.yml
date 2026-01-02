@@ -1,0 +1,145 @@
+# On-Call Schedule Configuration
+#
+# This file documents the on-call rotation structure.
+# Actual implementation depends on your chosen provider (PagerDuty/Opsgenie).
+
+schedules:
+  # Primary on-call rotation
+  - name: "Platform Primary On-Call"
+    description: "Primary responders for platform incidents"
+    timezone: "UTC"
+    rotation_type: "weekly"
+    start_time: "09:00"  # Handoff time in UTC
+    handoff_day: "Monday"
+    layers:
+      - name: "Platform Engineers"
+        users:
+          # Add your team members here
+          # - id: "user-123"
+          #   email: "engineer@example.com"
+          #   name: "Platform Engineer 1"
+
+  # Secondary/escalation rotation
+  - name: "Platform Escalation"
+    description: "Secondary responders for escalated incidents"
+    timezone: "UTC"
+    rotation_type: "weekly"
+    start_time: "09:00"
+    handoff_day: "Monday"
+    layers:
+      - name: "Senior Engineers"
+        users:
+          # Add senior team members here
+
+# Escalation policies
+escalation_policies:
+  - name: "Platform Escalation Policy"
+    description: "Default escalation for platform alerts"
+    rules:
+      # First escalation level - primary on-call
+      - escalation_delay_in_minutes: 0
+        targets:
+          - type: "schedule"
+            id: "Platform Primary On-Call"
+
+      # Second level - escalation rotation after 15 minutes
+      - escalation_delay_in_minutes: 15
+        targets:
+          - type: "schedule"
+            id: "Platform Escalation"
+
+      # Third level - all senior engineers after 30 minutes
+      - escalation_delay_in_minutes: 30
+        targets:
+          - type: "team"
+            id: "senior-engineers"
+
+    repeat_enabled: true
+    num_loops: 2  # Repeat escalation cycle twice before giving up
+
+# Services mapped to escalation policies
+services:
+  - name: "RepoRivals Platform"
+    description: "Main RepoRivals platform service"
+    escalation_policy: "Platform Escalation Policy"
+    acknowledgement_timeout: 600  # 10 minutes to acknowledge
+    auto_resolve_timeout: 14400   # 4 hours auto-resolve
+    alert_creation: "create_alerts_and_incidents"
+    alert_grouping: "time"
+    alert_grouping_timeout: 300   # 5 minute grouping window
+
+# Response thresholds
+response_slos:
+  critical:
+    acknowledge_within_minutes: 5
+    resolve_within_minutes: 60
+  error:
+    acknowledge_within_minutes: 15
+    resolve_within_minutes: 120
+  warning:
+    acknowledge_within_minutes: 60
+    resolve_within_minutes: 480
+
+# Documentation
+runbook_base_url: "https://docs.reporivals.com/runbooks"
+
+runbooks:
+  - path: "/match-start-failures"
+    title: "Match Start Failures Runbook"
+    description: "Steps to diagnose and resolve match start failures"
+
+  - path: "/judging-latency"
+    title: "Judging Latency Runbook"
+    description: "Steps to diagnose and resolve high judging latency"
+
+  - path: "/upload-failures"
+    title: "Upload Failures Runbook"
+    description: "Steps to diagnose and resolve submission upload failures"
+
+  - path: "/payment-failures"
+    title: "Payment Failures Runbook"
+    description: "Steps to diagnose and resolve payment processing failures"
+
+  - path: "/judging-queue-backlog"
+    title: "Judging Queue Backlog Runbook"
+    description: "Steps to handle judging queue buildup"
+
+  - path: "/capacity-planning"
+    title: "Capacity Planning Runbook"
+    description: "Steps for scaling when approaching capacity limits"
+
+  - path: "/websocket-scaling"
+    title: "WebSocket Scaling Runbook"
+    description: "Steps for scaling WebSocket connections"
+
+  - path: "/api-errors"
+    title: "API Errors Runbook"
+    description: "Steps to diagnose and resolve API 5xx errors"
+
+  - path: "/service-down"
+    title: "Service Down Runbook"
+    description: "Emergency steps when service is unreachable"
+
+  - path: "/database-connection"
+    title: "Database Connection Runbook"
+    description: "Steps to diagnose and resolve database connectivity issues"
+
+  - path: "/redis-connection"
+    title: "Redis Connection Runbook"
+    description: "Steps to diagnose and resolve Redis connectivity issues"
+
+  - path: "/high-memory"
+    title: "High Memory Usage Runbook"
+    description: "Steps to diagnose and resolve high memory usage"
+
+  - path: "/high-cpu"
+    title: "High CPU Usage Runbook"
+    description: "Steps to diagnose and resolve high CPU usage"
+
+  - path: "/custom-alerts"
+    title: "Custom Alerts Runbook"
+    description: "General guidelines for handling custom alerts"
+
+  - path: "/test-alerts"
+    title: "Test Alerts"
+    description: "This is a test alert - no action required"

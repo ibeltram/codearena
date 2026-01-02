@@ -85,6 +85,23 @@ const envSchema = z.object({
   SECRETS_CACHE_TTL: z.string().optional().default('300'),
   SECRETS_AUDIT_ENABLED: z.string().optional().default('true'),
   SECRETS_AUDIT_LEVEL: z.enum(['info', 'warn', 'debug']).optional().default('info'),
+
+  // Alerting
+  ALERTING_ENABLED: z.string().optional().default('false'),
+  ALERTING_PROVIDER: z.enum(['pagerduty', 'opsgenie', 'none']).optional().default('none'),
+
+  // PagerDuty
+  PAGERDUTY_ROUTING_KEY: z.string().optional(),
+  PAGERDUTY_API_URL: z.string().optional(),
+
+  // Opsgenie
+  OPSGENIE_API_KEY: z.string().optional(),
+  OPSGENIE_API_URL: z.string().optional(),
+  OPSGENIE_RESPONDERS: z.string().optional(), // JSON array of responders
+
+  // Runbooks
+  RUNBOOK_BASE_URL: z.string().optional().default('https://docs.reporivals.com/runbooks'),
+  ESCALATION_TIMEOUT_MINUTES: z.string().optional().default('15'),
 });
 
 export type Env = z.infer<typeof envSchema>;

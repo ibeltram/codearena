@@ -1,0 +1,224 @@
+# Prometheus Alerting Rules for RepoRivals
+#
+# These rules define SLO-based alerts that trigger when key metrics
+# breach defined thresholds. Alerts are sent to AlertManager which
+# forwards them to PagerDuty/Opsgenie.
+#
+# Usage:
+# 1. Copy this file to your Prometheus rules directory
+# 2. Configure AlertManager with PagerDuty/Opsgenie receiver
+# 3. Reload Prometheus configuration
+
+groups:
+  - name: reporivals-slo-alerts
+    rules:
+      # ========================================================================
+      # Critical SLO Alerts (P1 - Immediate Action Required)
+      # ========================================================================
+
+      - alert: MatchStartSuccessRateLow
+        expr: |
+          (
+            sum(rate(reporivals_match_start_total{status="success"}[5m]))
+            /
+            sum(rate(reporivals_match_start_total[5m]))
+          ) < 0.999
+        for: 5m
+        labels:
+          severity: critical
+          service: reporivals
+          component: matchmaking
+          slo: match_start_success
+        annotations:
+          summary: "Match start success rate below 99.9% SLO"
+          description: "Match start success rate is {{ $value | humanizePercentage }}, below the 99.9% SLO threshold."
+          runbook_url: "https://docs.reporivals.com/runbooks/match-start-failures"
+
+      - alert: JudgingLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(reporivals_judging_duration_seconds_bucket[10m])) by (le)
+          ) > 300
+        for: 5m
+        labels:
+          severity: critical
+          service: reporivals
+          component: judging
+          slo: judging_latency_p95
+        annotations:
+          summary: "Judging p95 latency exceeds 5 minute SLO"
+          description: "Judging p95 latency is {{ $value | humanizeDuration }}, exceeding the 5 minute SLO."
+          runbook_url: "https://docs.reporivals.com/runbooks/judging-latency"
+
+      - alert: PaymentFailureRateHigh
+        expr: |
+          (
+            sum(rate(reporivals_payment_total{status="failure"}[5m]))
+            /
+            sum(rate(reporivals_payment_total[5m]))
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          service: reporivals
+          component: payments
+          slo: payment_success
+        annotations:
+          summary: "Payment failure rate exceeds 5% threshold"
+          description: "Payment failure rate is {{ $value | humanizePercentage }}, exceeding 5% threshold."
+          runbook_url: "https://docs.reporivals.com/runbooks/payment-failures"
+
+      # ========================================================================
+      # Error Alerts (P2 - Action Required Within 30 Minutes)
+      # ========================================================================
+
+      - alert: UploadSuccessRateLow
+        expr: |
+          (
+            sum(rate(reporivals_upload_total{status="success"}[5m]))
+            /
+            sum(rate(reporivals_upload_total[5m]))
+          ) < 0.99
+        for: 5m
+        labels:
+          severity: error
+          service: reporivals
+          component: submissions
+          slo: upload_success
+        annotations:
+          summary: "Upload success rate below 99% threshold"
+          description: "Submission upload success rate is {{ $value | humanizePercentage }}, below 99% threshold."
+          runbook_url: "https://docs.reporivals.com/runbooks/upload-failures"
+
+      - alert: APIErrorRateHigh
+        expr: |
+          (
+            sum(rate(reporivals_http_request_total{status_code=~"5.."}[5m]))
+            /
+            sum(rate(reporivals_http_request_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: error
+          service: reporivals
+          component: api
+          slo: error_rate
+        annotations:
+          summary: "API 5xx error rate exceeds 1% threshold"
+          description: "API error rate is {{ $value | humanizePercentage }}, exceeding 1% threshold."
+          runbook_url: "https://docs.reporivals.com/runbooks/api-errors"
+
+      # ========================================================================
+      # Warning Alerts (P3 - Monitor and Prepare)
+      # ========================================================================
+
+      - alert: JudgingQueueBacklog
+        expr: reporivals_judging_queue_size > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: reporivals
+          component: judging
+          slo: queue_size
+        annotations:
+          summary: "Judging queue backlog growing"
+          description: "Judging queue has {{ $value }} jobs waiting, exceeding threshold of 100."
+          runbook_url: "https://docs.reporivals.com/runbooks/judging-queue-backlog"
+
+      - alert: ActiveMatchesNearCapacity
+        expr: reporivals_active_matches > 500
+        for: 5m
+        labels:
+          severity: warning
+          service: reporivals
+          component: matchmaking
+          slo: capacity
+        annotations:
+          summary: "Active matches approaching system capacity"
+          description: "Currently {{ $value }} active matches, approaching capacity limit."
+          runbook_url: "https://docs.reporivals.com/runbooks/capacity-planning"
+
+      - alert: WebSocketConnectionsHigh
+        expr: reporivals_websocket_connections_active > 10000
+        for: 5m
+        labels:
+          severity: warning
+          service: reporivals
+          component: realtime
+          slo: connections
+        annotations:
+          summary: "WebSocket connections approaching limit"
+          description: "Currently {{ $value }} active WebSocket connections."
+          runbook_url: "https://docs.reporivals.com/runbooks/websocket-scaling"
+
+      # ========================================================================
+      # Resource Alerts
+      # ========================================================================
+
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            process_resident_memory_bytes{job="reporivals-api"}
+            /
+            machine_memory_bytes
+          ) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          service: reporivals
+          component: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanizePercentage }} of available memory."
+          runbook_url: "https://docs.reporivals.com/runbooks/high-memory"
+
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total{job="reporivals-api"}[5m]) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          service: reporivals
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 90% for the last 10 minutes."
+          runbook_url: "https://docs.reporivals.com/runbooks/high-cpu"
+
+  - name: reporivals-availability-alerts
+    rules:
+      - alert: ServiceDown
+        expr: up{job="reporivals-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: reporivals
+          component: api
+        annotations:
+          summary: "RepoRivals API is down"
+          description: "The RepoRivals API service has been unreachable for more than 1 minute."
+          runbook_url: "https://docs.reporivals.com/runbooks/service-down"
+
+      - alert: DatabaseConnectionFailure
+        expr: pg_up{job="reporivals-postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: reporivals
+          component: database
+        annotations:
+          summary: "PostgreSQL database connection failure"
+          description: "Cannot connect to PostgreSQL database."
+          runbook_url: "https://docs.reporivals.com/runbooks/database-connection"
+
+      - alert: RedisConnectionFailure
+        expr: redis_up{job="reporivals-redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: reporivals
+          component: cache
+        annotations:
+          summary: "Redis connection failure"
+          description: "Cannot connect to Redis cache."
+          runbook_url: "https://docs.reporivals.com/runbooks/redis-connection"

@@ -22,6 +22,7 @@ import { rewardRoutes } from './rewards';
 import { adminAuditRoutes } from './admin-audit';
 import { automationRoutes } from './automation';
 import { featureFlagsRoutes } from './feature-flags';
+import { alertingRoutes } from './alerting';
 import { initializeMatchEvents } from '../lib/match-events';
 import { initFeatureFlags } from '../lib/feature-flags';
 
@@ -97,4 +98,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Feature flags routes
   await app.register(featureFlagsRoutes);
+
+  // Alerting routes (PagerDuty/Opsgenie integration)
+  await app.register(alertingRoutes);
 }
