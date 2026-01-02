@@ -213,3 +213,10 @@ export {
   type AdminRedemption,
   type AdminRedemptionsResponse,
 } from './use-admin-rewards';
+export {
+  useFeatureFlag,
+  useFeatureFlags,
+  useFeatureFlagsContext,
+  FeatureGate,
+  type FeatureFlagsContextType,
+} from '../providers/feature-flags-provider';

@@ -21,11 +21,16 @@ import ratingsRoutes from './ratings';
 import { rewardRoutes } from './rewards';
 import { adminAuditRoutes } from './admin-audit';
 import { automationRoutes } from './automation';
+import { featureFlagsRoutes } from './feature-flags';
 import { initializeMatchEvents } from '../lib/match-events';
+import { initFeatureFlags } from '../lib/feature-flags';
 
 export async function registerRoutes(app: FastifyInstance) {
   // Initialize match events system (pub/sub for real-time events)
   initializeMatchEvents();
+
+  // Initialize feature flags system
+  await initFeatureFlags();
 
   // Health check routes
   await app.register(healthRoutes);
@@ -89,4 +94,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Automation services routes (Phase 10)
   await app.register(automationRoutes);
+
+  // Feature flags routes
+  await app.register(featureFlagsRoutes);
 }

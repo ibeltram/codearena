@@ -50,6 +50,9 @@ const envSchema = z.object({
   OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
   OTEL_SAMPLE_RATE: z.string().optional(),
   OTEL_DEBUG: z.string().optional(),
+
+  // Feature Flags (LaunchDarkly)
+  LAUNCHDARKLY_SDK_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

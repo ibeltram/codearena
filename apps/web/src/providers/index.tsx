@@ -2,6 +2,7 @@
 
 import { QueryProvider } from './query-provider';
 import { ThemeProvider } from './theme-provider';
+import { FeatureFlagsProvider } from './feature-flags-provider';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -15,9 +16,13 @@ export function Providers({ children }: ProvidersProps) {
       enableSystem
       disableTransitionOnChange={false}
     >
-      <QueryProvider>{children}</QueryProvider>
+      <QueryProvider>
+        <FeatureFlagsProvider>
+          {children}
+        </FeatureFlagsProvider>
+      </QueryProvider>
     </ThemeProvider>
   );
 }
 
-export { QueryProvider, ThemeProvider };
+export { QueryProvider, ThemeProvider, FeatureFlagsProvider };
