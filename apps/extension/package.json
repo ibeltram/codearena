@@ -196,50 +196,6 @@
       }
     },
     "menus": {
-      "view/title": [
-        {
-          "command": "reporivals.filterChallenges",
-          "when": "view == reporivals-challenges",
-          "group": "navigation@1"
-        },
-        {
-          "command": "reporivals.refreshChallenges",
-          "when": "view == reporivals-challenges",
-          "group": "navigation@2"
-        },
-        {
-          "command": "reporivals.toggleGrouping",
-          "when": "view == reporivals-challenges",
-          "group": "navigation@3"
-        },
-        {
-          "command": "reporivals.signIn",
-          "when": "view == reporivals-challenges && !reporivals.isAuthenticated",
-          "group": "navigation@4"
-        },
-        {
-          "command": "reporivals.refreshHistory",
-          "when": "view == reporivals-history",
-          "group": "navigation@1"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "reporivals.joinMatch",
-          "when": "view == reporivals-challenges && viewItem == challenge",
-          "group": "inline"
-        },
-        {
-          "command": "reporivals.openChallengeInWeb",
-          "when": "view == reporivals-challenges && viewItem == challenge",
-          "group": "1_actions"
-        },
-        {
-          "command": "reporivals.joinMatch",
-          "when": "view == reporivals-challenges && viewItem == challenge",
-          "group": "1_actions"
-        }
-      ],
       "commandPalette": [
         {
           "command": "reporivals.submit",
