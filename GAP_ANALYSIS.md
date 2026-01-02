@@ -93,7 +93,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | Agent Jobs | ✅ Backend API + UI complete |
 | Credit Redemption for Services | ✅ Backend API + UI complete |
 | Job Creation Wizard | ✅ Complete - Full forms for all 5 job types with validation |
-| Job Processing Workers | Not started - BullMQ workers need implementation |
+| Job Processing Workers | ✅ Complete - BullMQ workers process all 5 job types |
 
 ### VS Code Extension Gaps
 
@@ -145,7 +145,7 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 | Phase 7: Credits Wallet | Complete | ~95% |
 | Phase 8: Rankings/Disputes | Complete (leaderboard, disputes, user reports, moderation enforcement) | ~98% |
 | Phase 9: Tournaments | Prize claims added | ~75% |
-| Phase 10: Automation Services | Backend API + Web UI + Job Creation Wizard complete | ~85% |
+| Phase 10: Automation Services | Complete (API, UI, Wizard, Workers) | ~95% |
 | Phase 11: Production Hardening | Rate limiting, GDPR done | ~60% |
 
 ---
@@ -159,5 +159,5 @@ The codebase has a **solid foundation** with most infrastructure in place. Howev
 5. ~~Wire artifact viewer to real API~~ - DONE (useArtifactFile hook integrated)
 6. ~~Phase 10: Automation Services~~ - Backend API + Web UI complete
 7. ~~Job Creation Wizard~~ - DONE - Full forms for all 5 job types with validation
-8. **Job Processing Workers** - BullMQ workers to execute jobs
+8. ~~Job Processing Workers~~ - DONE - BullMQ workers for all 5 job types (batch_run, eval_pipeline, ci_check, multi_model_compare, agent_job)
 9. **Production hardening** - Continue pen testing, load testing

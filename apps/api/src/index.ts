@@ -10,6 +10,7 @@ import { logger } from './lib/logger';
 import { cleanupAllConnections } from './lib/match-events';
 import { closeQueues } from './lib/queue';
 import { closeRedis } from './lib/redis';
+import { startAutomationWorker } from './lib/automation-worker';
 // Ensure collusion detection hook is loaded for match events
 import './lib/collusion-detection-hook';
 import {
@@ -91,6 +92,9 @@ async function start() {
     await app.listen({ port: PORT, host: HOST });
     logger.info(`🚀 RepoRivals API running on http://${HOST}:${PORT}`);
     logger.info(`Environment: ${env.NODE_ENV}`);
+
+    // Start background workers
+    startAutomationWorker();
   } catch (err) {
     logger.fatal({ err }, 'Failed to start server');
     process.exit(1);
