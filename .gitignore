@@ -46,3 +46,8 @@ temp/
 # Misc
 .turbo/
 .vercel/
+
+# Linear harness (auto-generated cache/state files)
+.linear_issue_cache.json
+.linear_pending.json
+.autonomy_state.json
