@@ -1,0 +1,99 @@
+/* CategoryFilter Component Styles */
+
+.category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  /* Handle overflow for many categories */
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+/* Scrollbar styling for overflow */
+.category-filter::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.category-filter::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 2px;
+}
+
+.category-filter::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* Chip button base styles */
+.category-filter__chip {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground-muted);
+  font-size: 0.8em;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+/* Hover state */
+.category-filter__chip:hover:not(:disabled) {
+  color: var(--foreground);
+  border-color: var(--vscode-focusBorder);
+}
+
+/* Active/selected state */
+.category-filter__chip--active {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.category-filter__chip--active:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+/* Disabled state */
+.category-filter__chip--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Focus state for keyboard navigation */
+.category-filter__chip:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+/* Compact variant for smaller sidebars */
+.category-filter--compact {
+  gap: 3px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
+.category-filter--compact .category-filter__chip {
+  padding: 3px 8px;
+  font-size: 0.75em;
+}
+
+/* Horizontal scrolling variant (single line) */
+.category-filter--horizontal {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: none;
+  padding-bottom: 8px;
+  /* Hide scrollbar but keep functionality */
+  scrollbar-width: thin;
+}
+
+.category-filter--horizontal::-webkit-scrollbar {
+  height: 2px;
+}

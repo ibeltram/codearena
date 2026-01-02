@@ -3,16 +3,16 @@ import { useExtension } from '../../context';
 import { useVSCodeMessaging } from '../../hooks/useVSCodeMessaging';
 import { ChallengeCategory } from '../../types/messages';
 import { ChallengeCard } from './ChallengeCard';
+import { CategoryFilter } from './CategoryFilter';
 import './ChallengesTab.css';
 
-// Category options for the filter
-const CATEGORIES: Array<{ value: ChallengeCategory | 'all'; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'frontend', label: 'Frontend' },
-  { value: 'backend', label: 'Backend' },
-  { value: 'fullstack', label: 'Fullstack' },
-  { value: 'algorithm', label: 'Algorithm' },
-  { value: 'devops', label: 'DevOps' },
+// Available categories for the filter
+const AVAILABLE_CATEGORIES: ChallengeCategory[] = [
+  'frontend',
+  'backend',
+  'fullstack',
+  'algorithm',
+  'devops',
 ];
 
 /**
@@ -29,20 +29,20 @@ export function ChallengesTab() {
     useVSCodeMessaging();
 
   // Local filter state (could also be persisted in context)
-  const [selectedCategory, setSelectedCategory] = useState<ChallengeCategory | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<ChallengeCategory | null>(null);
 
   // Filter challenges based on selected category
   const filteredChallenges = useMemo(() => {
-    if (selectedCategory === 'all') {
+    if (selectedCategory === null) {
       return state.challenges;
     }
     return state.challenges.filter((c) => c.category === selectedCategory);
   }, [state.challenges, selectedCategory]);
 
   // Handle category filter change
-  const handleCategoryChange = (category: ChallengeCategory | 'all') => {
-    setSelectedCategory(category);
-    filterChallenges(category === 'all' ? null : category);
+  const handleCategoryChange = (category: string | null) => {
+    setSelectedCategory(category as ChallengeCategory | null);
+    filterChallenges(category as ChallengeCategory | null);
   };
 
   // Handle join action
@@ -64,17 +64,12 @@ export function ChallengesTab() {
   if (state.challengesLoading) {
     return (
       <div className="challenges-tab">
-        <div className="challenges-tab__filter">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.value}
-              className="challenges-tab__filter-button challenges-tab__filter-button--loading"
-              disabled
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
+        <CategoryFilter
+          categories={AVAILABLE_CATEGORIES}
+          selected={selectedCategory}
+          onChange={handleCategoryChange}
+          disabled={true}
+        />
         <div className="challenges-tab__list">
           {[1, 2, 3].map((i) => (
             <div key={i} className="challenges-tab__skeleton">
@@ -111,19 +106,11 @@ export function ChallengesTab() {
     return (
       <div className="challenges-tab">
         {!isEmpty && (
-          <div className="challenges-tab__filter">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.value}
-                className={`challenges-tab__filter-button ${
-                  selectedCategory === cat.value ? 'challenges-tab__filter-button--active' : ''
-                }`}
-                onClick={() => handleCategoryChange(cat.value)}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
+          <CategoryFilter
+            categories={AVAILABLE_CATEGORIES}
+            selected={selectedCategory}
+            onChange={handleCategoryChange}
+          />
         )}
         <div className="challenges-tab__empty">
           <div className="challenges-tab__empty-icon">&#x1F50D;</div>
@@ -138,7 +125,7 @@ export function ChallengesTab() {
           {!isEmpty && (
             <button
               className="challenges-tab__empty-button"
-              onClick={() => handleCategoryChange('all')}
+              onClick={() => handleCategoryChange(null)}
             >
               Clear filter
             </button>
@@ -152,19 +139,11 @@ export function ChallengesTab() {
   return (
     <div className="challenges-tab">
       {/* Category filter */}
-      <div className="challenges-tab__filter">
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat.value}
-            className={`challenges-tab__filter-button ${
-              selectedCategory === cat.value ? 'challenges-tab__filter-button--active' : ''
-            }`}
-            onClick={() => handleCategoryChange(cat.value)}
-          >
-            {cat.label}
-          </button>
-        ))}
-      </div>
+      <CategoryFilter
+        categories={AVAILABLE_CATEGORIES}
+        selected={selectedCategory}
+        onChange={handleCategoryChange}
+      />
 
       {/* Challenges list */}
       <div className="challenges-tab__list">
