@@ -129,7 +129,7 @@ jobs:
     if: github.event_name == 'release' || inputs.sign == true
     steps:
       - name: Download VSIX artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: vsix-package
           path: ./extension
@@ -195,7 +195,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: vsix-package
           path: ./extension
@@ -230,7 +230,7 @@ jobs:
       url: https://marketplace.visualstudio.com/items?itemName=reporivals.reporivals
     steps:
       - name: Download VSIX artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: vsix-package-signed
           path: ./extension
@@ -264,7 +264,7 @@ jobs:
       url: https://open-vsx.org/extension/reporivals/reporivals
     steps:
       - name: Download VSIX artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: vsix-package-signed
           path: ./extension
@@ -297,7 +297,7 @@ jobs:
       contents: write
     steps:
       - name: Download VSIX artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: vsix-package-signed
           path: ./extension
